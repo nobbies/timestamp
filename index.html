@@ -4,12 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Photo TimeStamp Batch Pro - Cap Waktu, EXIF GPS & Kompresi Foto</title>
-    <!-- 👇 TAMBAHKAN KODE FAVICON DI SINI 👇 -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://img.icons8.com/color/48/camera.png">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Library Exif-JS untuk membaca metadata foto -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
+    <!-- Library Piexifjs untuk menyisipkan kembali metadata EXIF saat unduh -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
     <!-- JSZip & FileSaver untuk Unduh Batch ZIP -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -37,7 +39,7 @@
                 </div>
                 <h1 class="text-2xl md:text-3xl font-extrabold text-white">📸 Batch Photo TimeStamp & Kompresor</h1>
                 <p class="text-xs md:text-sm text-slate-400 mt-1">
-                    Cap waktu EXIF otomatis, ukuran proporsional, kompresi fleksibel, dan mekanisme unduh cerdas (.JPG untuk 1 foto, .ZIP untuk banyak foto).
+                    Cap waktu EXIF otomatis, ukuran proporsional, kompresi fleksibel, pelestarian EXIF, dan unduh cerdas.
                 </p>
             </div>
             <div id="batchStats" class="hidden md:flex items-center gap-3 bg-slate-900/80 border border-slate-700 px-4 py-2.5 rounded-xl text-xs">
@@ -148,8 +150,8 @@
                         <div>
                             <label class="text-[11px] text-slate-400 block mb-1">Target Maks. File Size:</label>
                             <select id="targetFileSizeSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-400">
-                                <option value="-1" selected>Tanpa Kompresi (Ukuran & Kualitas Asli)</option>
-                                <option value="0">Bebas (Sesuai Kualitas)</option>
+                                <option value="-1">Tanpa Kompresi (Ukuran & Kualitas Asli)</option>
+                                <option value="0" selected>Bebas (Sesuai Kualitas)</option>
                                 <option value="200">Maksimal 200 KB</option>
                                 <option value="300">Maksimal 300 KB</option>
                                 <option value="500">Maksimal 500 KB (Standar Upload)</option>
@@ -181,10 +183,9 @@
                         </p>
                     </div>
 
-                    <!-- Form Input Waktu & Lokasi (Disabled jika checkbox tidak dicentang) -->
+                    <!-- Form Input Waktu & Lokasi -->
                     <div id="inputFormContainer" class="space-y-3 opacity-60 pointer-events-none transition-all duration-200">
                         
-                        <!-- Pilihan Scope Edit -->
                         <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/70 space-y-1.5">
                             <div class="flex items-center justify-between text-xs">
                                 <span class="text-slate-300 font-semibold text-[11px]">Cakupan Edit:</span>
@@ -236,20 +237,16 @@
 
                 <!-- 5. MEKANISME UNDUH CERDAS & TOMBOL AKSI -->
                 <div class="pt-2 space-y-2.5">
-                    
-                    <!-- Tombol Utama: Otomatis Menjadi .JPG jika 1 foto, atau .ZIP jika banyak foto -->
                     <button id="mainDownloadBtn" disabled class="w-full bg-slate-700 text-slate-400 font-bold py-3.5 px-4 rounded-xl cursor-not-allowed transition flex items-center justify-center gap-2 shadow-lg">
                         <span id="mainDownloadIcon">⬇️</span>
                         <span id="mainDownloadText">Unduh Foto (.JPG)</span>
                     </button>
 
-                    <!-- Tombol Sekunder (Hanya Muncul Jika Lebih Dari 1 Foto): Unduh Foto Terpilih Saja Sebagai .JPG -->
                     <button id="downloadCurrentSingleBtn" class="hidden w-full bg-slate-900/90 hover:bg-slate-700/80 border border-slate-600 text-slate-200 font-medium py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-2 text-xs">
                         <span>🖼️</span>
                         <span id="downloadCurrentSingleText">Unduh Foto Terpilih Saja (.JPG)</span>
                     </button>
 
-                    <!-- Tombol Proses Batch -->
                     <button id="processAllBtn" disabled class="w-full bg-slate-900/40 hover:bg-slate-700/60 border border-slate-700/80 text-slate-400 font-medium py-2 px-3 rounded-lg cursor-not-allowed transition flex items-center justify-center gap-2 text-xs">
                         <span id="processIcon">⚡</span>
                         <span id="processText">Terapkan Cap Waktu & Kompres</span>
@@ -287,7 +284,7 @@
                         </button>
                     </div>
 
-                    <!-- Progress Bar Saat Memuat / Memproses -->
+                    <!-- Progress Bar -->
                     <div id="progressContainer" class="hidden space-y-1">
                         <div class="flex justify-between text-[11px] text-slate-400">
                             <span id="progressText">Memproses foto...</span>
@@ -298,7 +295,6 @@
                         </div>
                     </div>
 
-                    <!-- Kontainer List Thumbnail Foto -->
                     <div id="photoGrid" class="max-h-[220px] overflow-y-auto space-y-2 pr-1 text-xs">
                         <div class="text-center py-6 text-slate-500 text-xs italic">
                             Belum ada file dalam antrean
@@ -310,15 +306,13 @@
         </div>
     </div>
 
-    <!-- Script Aplikasi Logika Batch, EXIF GPS, Kompresi & Smart Download -->
+    <!-- Script Aplikasi Logika Batch, EXIF Pelestarian & Smart Download -->
     <script>
-        // DOM Elements
         const uploadImages = document.getElementById('uploadImages');
         const dropZone = document.getElementById('dropZone');
         const sizeSlider = document.getElementById('sizeSlider');
         const sizeValueDisplay = document.getElementById('sizeValueDisplay');
 
-        // Elemen Kompresi
         const qualitySlider = document.getElementById('qualitySlider');
         const qualityValueDisplay = document.getElementById('qualityValueDisplay');
         const qualityPercentText = document.getElementById('qualityPercentText');
@@ -329,7 +323,6 @@
         const compressedSizeText = document.getElementById('compressedSizeText');
         const reductionBadge = document.getElementById('reductionBadge');
 
-        // Elemen Edit Timestamp
         const editTimestampToggle = document.getElementById('editTimestampToggle');
         const inputFormContainer = document.getElementById('inputFormContainer');
         const toggleHint = document.getElementById('toggleHint');
@@ -341,7 +334,6 @@
         const locationLine1 = document.getElementById('locationLine1');
         const locationLine2 = document.getElementById('locationLine2');
 
-        // Elemen Mekanisme Unduh Pintar
         const mainDownloadBtn = document.getElementById('mainDownloadBtn');
         const mainDownloadIcon = document.getElementById('mainDownloadIcon');
         const mainDownloadText = document.getElementById('mainDownloadText');
@@ -364,7 +356,6 @@
         const progressText = document.getElementById('progressText');
         const progressPercent = document.getElementById('progressPercent');
 
-        // State Koleksi Foto & Override
         let photoBatch = [];
         let selectedIndex = -1;
         const geocodeCache = new Map();
@@ -383,7 +374,6 @@
         const DAYS = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
         const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-        // Format Byte ke KB / MB
         function formatBytes(bytes) {
             if (!bytes || bytes <= 0) return '0 KB';
             if (bytes < 1024) return bytes + ' B';
@@ -394,21 +384,18 @@
             return `${val} ${sizes[i]}`;
         }
 
-        // Pastikan font Google terload sebelum render
         document.fonts.ready.then(() => {
             if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
                 renderCurrentPreview();
             }
         });
 
-        // Validasi ekstensi/tipe file gambar
         function isImageFile(file) {
             if (!file) return false;
             if (file.type && file.type.startsWith('image/')) return true;
             return /\.(jpe?g|png|webp|bmp|gif|heic|tiff?)$/i.test(file.name);
         }
 
-        // Konversi koordinat DMS EXIF ke Decimal Degrees
         function convertDMSToDD(dms, ref) {
             if (!dms || dms.length < 3) return null;
             function parseCoord(val) {
@@ -433,7 +420,6 @@
             return dd;
         }
 
-        // Parser tanggal EXIF
         function parseExifDate(exifDateStr) {
             if (!exifDateStr) return null;
             const parts = exifDateStr.split(' ');
@@ -452,30 +438,37 @@
             );
         }
 
-        // Ekstraksi Metadata EXIF dengan Timeout Pengaman Ramah HP (12 Detik)
+        // Ekstraksi EXIF & Menyimpan Buffer Asli untuk Piexifjs
         function extractExifData(file) {
             return new Promise((resolve) => {
                 let finished = false;
-                // Timeout 12 detik agar foto HP resolusi tinggi (12-64MP) tidak gagal di HP
                 const timer = setTimeout(() => {
                     if (!finished) {
                         finished = true;
-                        resolve({ dateObj: null, gps: null });
+                        resolve({ dateObj: null, gps: null, exifBinary: null });
                     }
                 }, 12000);
 
-                try {
-                    EXIF.getData(file, function() {
-                        if (finished) return;
-                        finished = true;
-                        clearTimeout(timer);
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    let exifBinary = null;
+                    try {
+                        exifBinary = piexif.load(arrayBuffer);
+                    } catch (err) {
+                        exifBinary = null;
+                    }
 
-                        try {
+                    try {
+                        EXIF.getData(file, function() {
+                            if (finished) return;
+                            finished = true;
+                            clearTimeout(timer);
+
                             const allTags = EXIF.getAllTags(this) || {};
                             const dateTimeOriginal = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime") || allTags.DateTimeOriginal || allTags.DateTime;
                             const dateObj = parseExifDate(dateTimeOriginal);
 
-                            // Ambil GPS dengan fallback ganda (getTag & allTags)
                             const lat = EXIF.getTag(this, "GPSLatitude") || allTags.GPSLatitude;
                             let latRef = EXIF.getTag(this, "GPSLatitudeRef") || allTags.GPSLatitudeRef;
                             const lon = EXIF.getTag(this, "GPSLongitude") || allTags.GPSLongitude;
@@ -483,9 +476,8 @@
 
                             let gps = null;
                             if (lat && lon) {
-                                if (!latRef) latRef = 'S'; // Fallback umum koordinat Indonesia
+                                if (!latRef) latRef = 'S';
                                 if (!lonRef) lonRef = 'E';
-
                                 const latDD = convertDMSToDD(lat, latRef);
                                 const lonDD = convertDMSToDD(lon, lonRef);
                                 if (latDD !== null && lonDD !== null) {
@@ -493,22 +485,20 @@
                                 }
                             }
 
-                            resolve({ dateObj, gps, dateTimeOriginal });
-                        } catch (err) {
-                            resolve({ dateObj: null, gps: null });
+                            resolve({ dateObj, gps, exifBinary });
+                        });
+                    } catch (e) {
+                        if (!finished) {
+                            finished = true;
+                            clearTimeout(timer);
+                            resolve({ dateObj: null, gps: null, exifBinary });
                         }
-                    });
-                } catch (e) {
-                    if (!finished) {
-                        finished = true;
-                        clearTimeout(timer);
-                        resolve({ dateObj: null, gps: null });
                     }
-                }
+                };
+                reader.readAsArrayBuffer(file);
             });
         }
 
-        // Muat Objek Image dari Blob URL dengan batas waktu 10 detik
         function loadImageAsync(blobUrl) {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -538,43 +528,28 @@
             });
         }
 
-        // Reverse Geocoding Multi-Provider: OSM Nominatim & BigDataCloud (Sangat Cepat & Ramah Mobile)
         async function fetchAddressFromCoords(lat, lon) {
             const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
-            if (geocodeCache.has(key)) {
-                return geocodeCache.get(key);
-            }
+            if (geocodeCache.has(key)) return geocodeCache.get(key);
 
-            // Provider 1: OpenStreetMap Nominatim
             try {
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-                const res = await fetch(url, {
-                    signal: controller.signal,
-                    headers: { 'Accept': 'application/json' }
-                });
+                const res = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
                 clearTimeout(timeoutId);
 
                 if (res.ok) {
                     const data = await res.json();
                     const addr = data.address || {};
-
                     const part1 = addr.village || addr.suburb || addr.neighbourhood || addr.road || addr.quarter || addr.hamlet || '';
                     const part2 = addr.county || addr.city_district || addr.district || '';
-                    let line1 = '';
-                    if (part1 && part2) line1 = `${part1}, Kec. ${part2},`;
-                    else if (part1) line1 = `${part1},`;
-                    else if (part2) line1 = `Kec. ${part2},`;
-
+                    let line1 = part1 && part2 ? `${part1}, Kec. ${part2},` : (part1 ? `${part1},` : (part2 ? `Kec. ${part2},` : ''));
                     const city = addr.city || addr.regency || addr.municipality || addr.town || '';
                     const state = addr.state || '';
                     const postcode = addr.postcode || '';
-                    let line2 = '';
-                    if (city && state) line2 = `${city}, ${state} ${postcode}`.trim();
-                    else if (city) line2 = `${city} ${postcode}`.trim();
-                    else if (state) line2 = `${state} ${postcode}`.trim();
+                    let line2 = city && state ? `${city}, ${state} ${postcode}`.trim() : (city ? `${city} ${postcode}`.trim() : `${state} ${postcode}`.trim());
 
                     if (line1 || line2) {
                         const result = { line1, line2 };
@@ -582,26 +557,21 @@
                         return result;
                     }
                 }
-            } catch (e) {
-                // Lanjut coba provider 2 jika Nominatim lambat / terblokir di jaringan seluler
-            }
+            } catch (e) {}
 
-            // Provider 2: BigDataCloud Reverse Geocoding (Bebas CORS, sangat stabil di seluler)
             try {
                 const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`;
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
-
                 const res = await fetch(bdcUrl, { signal: controller.signal });
                 clearTimeout(timeoutId);
 
                 if (res.ok) {
                     const data = await res.json();
                     const locality = data.locality || data.principalSubdivision || '';
-                    const city = data.city || data.localityInfo?.administrative?.[2]?.name || '';
+                    const city = data.city || '';
                     const province = data.principalSubdivision || '';
                     const postcode = data.postcode || '';
-
                     let line1 = locality ? `${locality},` : '';
                     let line2 = city ? `${city}, ${province} ${postcode}`.trim() : `${province} ${postcode}`.trim();
 
@@ -611,20 +581,13 @@
                         return result;
                     }
                 }
-            } catch (e) {
-                // Fallback ke koordinat
-            }
+            } catch (e) {}
 
-            // Fallback Terakhir: Koordinat Presisi
-            const result = {
-                line1: `GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`,
-                line2: ''
-            };
+            const result = { line1: `GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`, line2: '' };
             geocodeCache.set(key, result);
             return result;
         }
 
-        // Fungsi Sentral Mengambil Data Efektif Suatu Foto
         function getEffectiveData(item) {
             if (!item) return { timeStr: '', dayStr: '', dateStr: '', loc1: '', loc2: '' };
 
@@ -669,7 +632,6 @@
             }
         }
 
-        // Penanganan Import Batch yang Bebas Bug
         async function handleFiles(fileList) {
             if (!fileList || fileList.length === 0) return;
 
@@ -708,11 +670,7 @@
                 const dateStr = `${dateObj.getDate()} ${MONTHS[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
 
                 const hasGps = !!exifResult.gps;
-                let initialLoc1 = '';
-                let initialLoc2 = '';
-                if (hasGps) {
-                    initialLoc1 = `GPS: ${exifResult.gps.lat.toFixed(6)}, ${exifResult.gps.lon.toFixed(6)}`;
-                }
+                let initialLoc1 = hasGps ? `GPS: ${exifResult.gps.lat.toFixed(6)}, ${exifResult.gps.lon.toFixed(6)}` : '';
 
                 const photoItem = {
                     id: Date.now() + Math.random().toString(),
@@ -723,15 +681,14 @@
                     dateObj: dateObj,
                     originalSizeBytes: file.size,
                     compressedSizeBytes: null,
+                    exifBinary: exifResult.exifBinary,
 
-                    // Data Asli (IMMUTABLE dari EXIF / Sistem)
                     origTimeStr: timeStr,
                     origDayStr: dayStr,
                     origDateStr: dateStr,
                     origLoc1: initialLoc1,
-                    origLoc2: initialLoc2,
+                    origLoc2: '',
                     hasGps: hasGps,
-                    hasExif: !!exifResult.dateObj,
 
                     customEdit: null,
                     processedBlob: null
@@ -762,13 +719,6 @@
             }
         }
 
-        /**
-         * MEKANISME UI ADAPTIF:
-         * Menyesuaikan teks dan perilaku tombol:
-         * - 0 Foto : Disabled
-         * - 1 Foto : Tombol utama langsung "Unduh Foto (.JPG)" (TANPA ZIP!)
-         * - >1 Foto: Tombol utama "Unduh Semua Sekaligus (.ZIP)" + Tombol sekunder "Unduh Foto Ini Saja (.JPG)"
-         */
         function updateBatchUI() {
             totalPhotosCount.innerText = photoBatch.length;
             badgePhotoCount.innerText = `${photoBatch.length} Foto`;
@@ -798,7 +748,6 @@
                 clearInputs();
 
             } else if (photoBatch.length === 1) {
-                // HANYA 1 FOTO: MEKANISME LANGSUNG .JPG (TANPA ZIP)
                 batchStats.classList.remove('hidden');
                 batchStats.classList.add('flex');
                 clearAllBtn.classList.remove('hidden');
@@ -808,14 +757,13 @@
                 mainDownloadIcon.innerText = "⬇️";
                 mainDownloadText.innerText = "Unduh Foto Ber-Timestamp (.JPG)";
 
-                downloadCurrentSingleBtn.classList.add('hidden'); // Tidak perlu tombol kedua jika hanya ada 1 foto
+                downloadCurrentSingleBtn.classList.add('hidden');
 
                 processAllBtn.disabled = false;
                 processAllBtn.className = "w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-medium py-2 px-3 rounded-lg cursor-pointer transition flex items-center justify-center gap-2 text-xs";
                 processText.innerText = "Terapkan Cap Waktu & Kompres Foto";
 
             } else {
-                // LEBIH DARI 1 FOTO (BATCH): MEKANISME .ZIP & OPSI UNDUH SATUAN
                 batchStats.classList.remove('hidden');
                 batchStats.classList.add('flex');
                 clearAllBtn.classList.remove('hidden');
@@ -825,7 +773,6 @@
                 mainDownloadIcon.innerText = "📦";
                 mainDownloadText.innerText = `Unduh Semua Sekaligus (${photoBatch.length} Foto .ZIP)`;
 
-                // Tampilkan opsi unduh foto aktif saja sebagai .JPG
                 downloadCurrentSingleBtn.classList.remove('hidden');
                 const activeName = photoBatch[selectedIndex]?.name || 'Terpilih';
                 downloadCurrentSingleText.innerHTML = `Unduh Foto Ini Saja: <strong class="text-amber-400 truncate max-w-[170px] inline-block align-bottom">${activeName}</strong> (.JPG)`;
@@ -846,7 +793,6 @@
             locationLine2.value = '';
         }
 
-        // Sinkronisasi Input Form dengan Foto yang Sedang Terpilih
         function syncInputsWithSelected() {
             if (selectedIndex < 0 || !photoBatch[selectedIndex]) {
                 clearInputs();
@@ -880,7 +826,6 @@
             }
         }
 
-        // Render Daftar Antrean Foto
         function renderBatchList() {
             if (photoBatch.length === 0) {
                 photoGrid.innerHTML = `<div class="text-center py-6 text-slate-500 text-xs italic">Belum ada file dalam antrean</div>`;
@@ -911,7 +856,7 @@
                 } else if (item.hasGps) {
                     statusBadge = `<span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 py-0.2 rounded ml-1">GPS EXIF</span>`;
                 } else {
-                    statusBadge = `<span class="text-[9px] bg-slate-800 text-slate-500 px-1 py-0.2 rounded ml-1">Tanpa GPS (Kosong)</span>`;
+                    statusBadge = `<span class="text-[9px] bg-slate-800 text-slate-500 px-1 py-0.2 rounded ml-1">Tanpa GPS</span>`;
                 }
 
                 let sizeInfo = `<span class="text-slate-500">${formatBytes(item.originalSizeBytes)}</span>`;
@@ -952,7 +897,6 @@
             });
         }
 
-        // Pilih Foto Tertentu untuk Pratinjau
         function selectPhoto(idx) {
             if (idx < 0 || idx >= photoBatch.length) return;
             selectedIndex = idx;
@@ -960,27 +904,19 @@
             currentPhotoLabel.innerText = `${item.name} (${idx + 1} dari ${photoBatch.length})`;
 
             syncInputsWithSelected();
-            updateBatchUI(); // Perbarui label tombol unduh foto aktif
+            updateBatchUI();
             renderCurrentPreview();
         }
 
-        // Hapus Foto dari Antrean
         function removePhoto(idx) {
             const item = photoBatch[idx];
-            if (item && item.blobUrl) {
-                URL.revokeObjectURL(item.blobUrl);
-            }
+            if (item && item.blobUrl) URL.revokeObjectURL(item.blobUrl);
             photoBatch.splice(idx, 1);
-            if (selectedIndex >= photoBatch.length) {
-                selectedIndex = photoBatch.length - 1;
-            }
+            if (selectedIndex >= photoBatch.length) selectedIndex = photoBatch.length - 1;
             updateBatchUI();
-            if (selectedIndex >= 0) {
-                selectPhoto(selectedIndex);
-            }
+            if (selectedIndex >= 0) selectPhoto(selectedIndex);
         }
 
-        // Menggambar Timestamp pada Canvas (Mendukung Dimensi Resize, Posisi Sudut & Kompresi)
         function drawTimestamp(targetCanvas, img, time, day, date, loc1, loc2, sizePercent, maxDim = 0, position = 'bottom-left') {
             const ctx = targetCanvas.getContext('2d');
 
@@ -1030,7 +966,6 @@
             const locFontSize = Math.round(22 * s);
             const locLineHeight = 31 * s;
 
-            // Hitung lebar teks komponen
             ctx.font = `600 ${timeFontSize}px 'Oswald', sans-serif`;
             const timeWidth = ctx.measureText(time).width;
 
@@ -1050,7 +985,6 @@
             const isBottom = position.startsWith('bottom');
             const isRight = position.includes('right');
 
-            // Hitung Koordinat Vertikal (Y)
             let timeBlockBottomY;
             if (isBottom) {
                 const locStartY = targetCanvas.height - padY;
@@ -1059,7 +993,6 @@
                 timeBlockBottomY = padY + timeFontSize;
             }
 
-            // Hitung Koordinat Horizontal (X)
             let timeStartX;
             if (isRight) {
                 const blockRightX = targetCanvas.width - padX;
@@ -1068,7 +1001,7 @@
                 timeStartX = padX;
             }
 
-            // 1. Jam Besar (Font Oswald)
+            // 1. Jam Besar
             ctx.font = `600 ${timeFontSize}px 'Oswald', sans-serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'bottom';
@@ -1076,7 +1009,7 @@
             ctx.fillStyle = '#FFFFFF';
             ctx.fillText(time, timeStartX, timeBlockBottomY);
 
-            // 2. Garis Pembatas Kuning
+            // 2. Garis Kuning
             const barX = timeStartX + timeWidth + barSpacingBefore;
             const barTopY = timeBlockBottomY - (timeFontSize * 0.77);
             const barHeight = timeFontSize * 0.75;
@@ -1097,7 +1030,7 @@
             ctx.textBaseline = 'bottom';
             ctx.fillText(day, textDateX, barTopY + barHeight);
 
-            // 4. Dua Baris Alamat / Lokasi (Jika Ada)
+            // 4. Lokasi
             if (loc1 || loc2) {
                 ctx.font = `400 ${locFontSize}px 'Inter', sans-serif`;
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
@@ -1133,22 +1066,41 @@
             clearShadow();
         }
 
-        // Kompresi atau Ekspor Canvas ke JPEG Blob
-        async function compressCanvasToBlob(targetCanvas, qualityPercent, targetMaxKB = 0) {
-            // Jika opsi "Tanpa Kompresi" dipilih (-1)
-            if (targetMaxKB === -1) {
-                return await new Promise(res => targetCanvas.toBlob(res, 'image/jpeg', 1.0));
+        // Fungsi Kompresi + Menyisipkan Kembali EXIF Mentah Menggunakan Piexifjs
+        async function compressCanvasToBlob(targetCanvas, qualityPercent, targetMaxKB = 0, exifBinary = null) {
+            let quality = (targetMaxKB === -1) ? 1.0 : Math.max(0.1, Math.min(1.0, qualityPercent / 100));
+            
+            let dataUrl = targetCanvas.toDataURL('image/jpeg', quality);
+
+            // Sisipkan kembali EXIF asli jika tersedia
+            if (exifBinary) {
+                try {
+                    let exifBytes = piexif.dump(exifBinary);
+                    dataUrl = piexif.insert(exifBytes, dataUrl);
+                } catch (e) {
+                    // Jika gagal menyisipkan EXIF, abaikan dan gunakan dataUrl standar
+                }
             }
 
-            let q = Math.max(0.1, Math.min(1.0, qualityPercent / 100));
-            let blob = await new Promise(res => targetCanvas.toBlob(res, 'image/jpeg', q));
+            // Ubah kembali dataURL ke Blob
+            let blob = await (async () => {
+                const res = await fetch(dataUrl);
+                return await res.blob();
+            })();
 
-            if (targetMaxKB > 0 && blob.size > targetMaxKB * 1024) {
+            // Target ukuran file (jika diaktifkan selain -1 dan 0)
+            if (targetMaxKB > 0 && targetMaxKB !== -1 && blob.size > targetMaxKB * 1024) {
                 let minQ = 0.12;
-                let maxQ = q;
+                let maxQ = quality;
                 for (let iter = 0; iter < 4; iter++) {
                     let midQ = (minQ + maxQ) / 2;
-                    let testBlob = await new Promise(res => targetCanvas.toBlob(res, 'image/jpeg', midQ));
+                    let testDataUrl = targetCanvas.toDataURL('image/jpeg', midQ);
+                    if (exifBinary) {
+                        try {
+                            testDataUrl = piexif.insert(piexif.dump(exifBinary), testDataUrl);
+                        } catch (e) {}
+                    }
+                    let testBlob = await (await fetch(testDataUrl)).blob();
                     if (testBlob.size <= targetMaxKB * 1024) {
                         blob = testBlob;
                         minQ = midQ;
@@ -1161,8 +1113,7 @@
             return blob;
         }
 
-        // Render Pratinjau Foto Aktif & Update Statistik Kompresi
-        function renderCurrentPreview() {
+        async function renderCurrentPreview() {
             if (selectedIndex < 0 || !photoBatch[selectedIndex]) return;
             const item = photoBatch[selectedIndex];
             const eff = getEffectiveData(item);
@@ -1178,7 +1129,7 @@
             previewStatTimeout = setTimeout(async () => {
                 const qualityVal = parseInt(qualitySlider.value);
                 const targetMaxKB = parseInt(targetFileSizeSelect.value);
-                const blob = await compressCanvasToBlob(canvas, qualityVal, targetMaxKB);
+                const blob = await compressCanvasToBlob(canvas, qualityVal, targetMaxKB, item.exifBinary);
 
                 item.processedBlob = blob;
                 item.compressedSizeBytes = blob.size;
@@ -1194,7 +1145,6 @@
             }, 120);
         }
 
-        // Terapkan Perubahan Input Manual
         function handleManualInputUpdate() {
             if (!editTimestampToggle.checked) return;
 
@@ -1229,7 +1179,6 @@
             renderCurrentPreview();
         }
 
-        // Reset Data EXIF Asli
         resetCurrentPhotoBtn.addEventListener('click', () => {
             if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
                 const item = photoBatch[selectedIndex];
@@ -1241,11 +1190,9 @@
             }
         });
 
-        // Radio Scope
         document.querySelectorAll('input[name="applyScope"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 const newScope = e.target.value;
-
                 if (newScope === 'all') {
                     globalBatchOverride = {
                         timeStr: timeInput.value,
@@ -1260,22 +1207,19 @@
                     globalBatchOverride.isActive = false;
                     syncInputsWithSelected();
                 }
-
                 renderBatchList();
                 renderCurrentPreview();
             });
         });
 
-        // Toggle Checkbox Edit Manual
         editTimestampToggle.addEventListener('change', (e) => {
-            const isChecked = e.target.checked;
-            if (isChecked) {
+            if (e.target.checked) {
                 inputFormContainer.classList.remove('opacity-60', 'pointer-events-none');
-                toggleHint.innerHTML = `<span class="text-amber-400 font-semibold">Mode Edit Manual Aktif:</span> Anda dapat mengubah jam, tanggal, atau lokasi. Pilih apakah diterapkan ke <em>Foto ini saja</em> atau <em>Semua foto batch</em>.`;
+                toggleHint.innerHTML = `<span class="text-amber-400 font-semibold">Mode Edit Manual Aktif:</span> Anda dapat mengubah jam, tanggal, atau lokasi.`;
                 syncInputsWithSelected();
             } else {
                 inputFormContainer.classList.add('opacity-60', 'pointer-events-none');
-                toggleHint.innerHTML = `<span class="text-emerald-400 font-medium">Mode Otomatis Aktif:</span> Data jam, tanggal, dan lokasi murni dari EXIF asli masing-masing foto. Jika foto tidak memiliki GPS, lokasi otomatis kosong.`;
+                toggleHint.innerHTML = `<span class="text-emerald-400 font-medium">Mode Otomatis Aktif:</span> Data jam, tanggal, dan lokasi murni dari EXIF asli.`;
                 globalBatchOverride.isActive = false;
                 syncInputsWithSelected();
             }
@@ -1283,30 +1227,20 @@
             renderCurrentPreview();
         });
 
-        // Event Input Teks
         [timeInput, dayInput, dateInput, locationLine1, locationLine2].forEach(input => {
             input.addEventListener('input', handleManualInputUpdate);
         });
 
-        // Slider Ukuran Timestamp
         sizeSlider.addEventListener('input', (e) => {
             const val = e.target.value;
-            let label = `${val}%`;
-            if (val <= 45) label += ' (Sangat Kecil)';
-            else if (val <= 70) label += ' (Kecil/Kompak)';
-            else if (val <= 85) label += ' (Sedang)';
-            else label += ' (Besar)';
-
-            sizeValueDisplay.innerText = label;
+            sizeValueDisplay.innerText = `${val}%`;
             renderCurrentPreview();
         });
 
-        // Tombol Pilihan 4 Sudut Posisi Timestamp
         document.querySelectorAll('.pos-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const targetBtn = e.currentTarget;
-                const pos = targetBtn.dataset.pos;
-                currentPosition = pos;
+                currentPosition = targetBtn.dataset.pos;
 
                 document.querySelectorAll('.pos-btn').forEach(b => {
                     b.classList.remove('active', 'border-amber-500/80', 'bg-amber-500/15', 'text-amber-300', 'font-bold', 'shadow-sm');
@@ -1321,23 +1255,14 @@
             });
         });
 
-        // Slider Kualitas Kompresi
         qualitySlider.addEventListener('input', (e) => {
             const val = e.target.value;
             qualityPercentText.innerText = `${val}%`;
-
-            let label = `${val}%`;
-            if (val <= 40) label += ' (Sangat Hemat)';
-            else if (val <= 75) label += ' (Ringan)';
-            else if (val <= 85) label += ' (Optimal)';
-            else label += ' (Tinggi / HD)';
-
-            qualityValueDisplay.innerText = label;
+            qualityValueDisplay.innerText = `${val}%`;
             photoBatch.forEach(item => item.processedBlob = null);
             renderCurrentPreview();
         });
 
-        // Dropdown Kompresi
         maxDimensionSelect.addEventListener('change', () => {
             photoBatch.forEach(item => item.processedBlob = null);
             renderCurrentPreview();
@@ -1348,7 +1273,6 @@
             renderCurrentPreview();
         });
 
-        // Proses Semua Foto Secara Batch
         async function processAllPhotos() {
             if (photoBatch.length === 0) return;
 
@@ -1373,7 +1297,7 @@
                 progressPercent.innerText = `${pct}%`;
 
                 drawTimestamp(offscreenCanvas, item.img, eff.timeStr, eff.dayStr, eff.dateStr, eff.loc1, eff.loc2, sizePercent, maxDim, currentPosition);
-                const compressedBlob = await compressCanvasToBlob(offscreenCanvas, qualityVal, targetMaxKB);
+                const compressedBlob = await compressCanvasToBlob(offscreenCanvas, qualityVal, targetMaxKB, item.exifBinary);
                 item.processedBlob = compressedBlob;
                 item.compressedSizeBytes = compressedBlob.size;
             }
@@ -1384,7 +1308,6 @@
             renderCurrentPreview();
         }
 
-        // Unduh Satu Foto Sebagai File .JPG (Bukan ZIP)
         async function downloadSingle(idx) {
             const item = photoBatch[idx];
             if (!item) return;
@@ -1398,40 +1321,32 @@
                 const targetMaxKB = parseInt(targetFileSizeSelect.value);
 
                 drawTimestamp(tempCanvas, item.img, eff.timeStr, eff.dayStr, eff.dateStr, eff.loc1, eff.loc2, sizePercent, maxDim, currentPosition);
-                const compressedBlob = await compressCanvasToBlob(tempCanvas, qualityVal, targetMaxKB);
+                const compressedBlob = await compressCanvasToBlob(tempCanvas, qualityVal, targetMaxKB, item.exifBinary);
                 item.processedBlob = compressedBlob;
                 item.compressedSizeBytes = compressedBlob.size;
             }
 
-            // Simpan dengan nama asli murni tanpa embel-embel _timestamp
             const fileName = getOriginalFileName(item.name);
             saveAs(item.processedBlob, fileName);
             updateBatchUI();
         }
 
-        // Helper untuk mempertahankan nama file asli murni
         function getOriginalFileName(originalName) {
             if (!originalName) return `foto_${Date.now()}.jpg`;
-            if (/\.(jpe?g)$/i.test(originalName)) {
-                return originalName;
-            }
+            if (/\.(jpe?g)$/i.test(originalName)) return originalName;
             return originalName.replace(/\.[^/.]+$/, "") + ".jpg";
         }
 
-        // Unduh Semua Foto Sekaligus Sebagai ZIP (Hanya Untuk > 1 Foto)
         async function downloadAllAsZip() {
             if (photoBatch.length === 0) return;
 
-            // Jika hanya 1 foto, panggil fungsi unduh tunggal .JPG
             if (photoBatch.length === 1) {
                 await downloadSingle(0);
                 return;
             }
 
             const hasUnprocessed = photoBatch.some(p => p.processedBlob === null);
-            if (hasUnprocessed) {
-                await processAllPhotos();
-            }
+            if (hasUnprocessed) await processAllPhotos();
 
             mainDownloadBtn.disabled = true;
             mainDownloadText.innerText = 'Mengompres ZIP...';
@@ -1443,7 +1358,6 @@
             const nameTracker = {};
             photoBatch.forEach((item) => {
                 let fileName = getOriginalFileName(item.name);
-                // Cegah duplikasi file jika ada foto dengan nama yang sama persis
                 if (nameTracker[fileName]) {
                     nameTracker[fileName]++;
                     const clean = fileName.replace(/\.[^/.]+$/, "");
@@ -1467,20 +1381,12 @@
             updateBatchUI();
         }
 
-        // EVENT LISTENER UTAMA: Logika Unduh Pintar
         mainDownloadBtn.addEventListener('click', async () => {
             if (photoBatch.length === 0) return;
-
-            if (photoBatch.length === 1) {
-                // HANYA 1 FOTO: LANGSUNG UNDUH FILE .JPG TANPA ZIP!
-                await downloadSingle(0);
-            } else {
-                // LEBIH DARI 1 FOTO: UNDUH SEBAGAI ZIP
-                await downloadAllAsZip();
-            }
+            if (photoBatch.length === 1) await downloadSingle(0);
+            else await downloadAllAsZip();
         });
 
-        // Unduh Foto Aktif Saja (Tombol Sekunder)
         downloadCurrentSingleBtn.addEventListener('click', async () => {
             if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
                 await downloadSingle(selectedIndex);
@@ -1490,22 +1396,18 @@
         processAllBtn.addEventListener('click', processAllPhotos);
 
         clearAllBtn.addEventListener('click', () => {
-            photoBatch.forEach(p => {
-                if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
-            });
+            photoBatch.forEach(p => { if (p.blobUrl) URL.revokeObjectURL(p.blobUrl); });
             photoBatch = [];
             selectedIndex = -1;
             globalBatchOverride = { timeStr: '', dayStr: '', dateStr: '', loc1: '', loc2: '', isActive: false };
             updateBatchUI();
         });
 
-        // Event Input Upload File
         uploadImages.addEventListener('change', (e) => {
             handleFiles(e.target.files);
             uploadImages.value = '';
         });
 
-        // Drag & Drop
         ['dragenter', 'dragover'].forEach(name => {
             dropZone.addEventListener(name, (e) => {
                 e.preventDefault();
@@ -1524,8 +1426,7 @@
 
         dropZone.addEventListener('drop', (e) => {
             const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
+            handleFiles(dt.files);
         });
     </script>
 </body>
