@@ -60,6 +60,10 @@
                         <span class="text-xs text-slate-400 mt-1 text-center">Bisa 1 foto atau pilih banyak foto sekaligus</span>
                         <input type="file" id="uploadImages" accept="image/*, .jpg, .jpeg, .png, .webp, .heic" multiple class="hidden">
                     </label>
+                    <!-- Info Penting untuk Pengguna HP -->
+                    <div class="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[11px] text-amber-300/90 leading-relaxed">
+                        📱 <strong>Tips Pengguna HP:</strong> Jika GPS tidak terdeteksi saat upload dari HP, pilih foto melalui menu <strong>"File / Pengelola File"</strong> (jangan lewat tab Galeri), karena fitur privasi Galeri HP sering otomatis menghapus lokasi foto.
+                    </div>
                 </div>
 
                 <!-- 2. Pengaturan Ukuran & Posisi Timestamp -->
@@ -445,16 +449,17 @@
             );
         }
 
-        // Ekstraksi Metadata EXIF dengan Timeout Pengaman
+        // Ekstraksi Metadata EXIF dengan Timeout Pengaman Ramah HP (12 Detik)
         function extractExifData(file) {
             return new Promise((resolve) => {
                 let finished = false;
+                // Timeout 12 detik agar foto HP resolusi tinggi (12-64MP) tidak gagal di HP
                 const timer = setTimeout(() => {
                     if (!finished) {
                         finished = true;
                         resolve({ dateObj: null, gps: null });
                     }
-                }, 1500);
+                }, 12000);
 
                 try {
                     EXIF.getData(file, function() {
@@ -463,16 +468,21 @@
                         clearTimeout(timer);
 
                         try {
-                            const dateTimeOriginal = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime");
+                            const allTags = EXIF.getAllTags(this) || {};
+                            const dateTimeOriginal = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime") || allTags.DateTimeOriginal || allTags.DateTime;
                             const dateObj = parseExifDate(dateTimeOriginal);
 
-                            const lat = EXIF.getTag(this, "GPSLatitude");
-                            const latRef = EXIF.getTag(this, "GPSLatitudeRef");
-                            const lon = EXIF.getTag(this, "GPSLongitude");
-                            const lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+                            // Ambil GPS dengan fallback ganda (getTag & allTags)
+                            const lat = EXIF.getTag(this, "GPSLatitude") || allTags.GPSLatitude;
+                            let latRef = EXIF.getTag(this, "GPSLatitudeRef") || allTags.GPSLatitudeRef;
+                            const lon = EXIF.getTag(this, "GPSLongitude") || allTags.GPSLongitude;
+                            let lonRef = EXIF.getTag(this, "GPSLongitudeRef") || allTags.GPSLongitudeRef;
 
                             let gps = null;
-                            if (lat && lon && latRef && lonRef) {
+                            if (lat && lon) {
+                                if (!latRef) latRef = 'S'; // Fallback umum koordinat Indonesia
+                                if (!lonRef) lonRef = 'E';
+
                                 const latDD = convertDMSToDD(lat, latRef);
                                 const lonDD = convertDMSToDD(lon, lonRef);
                                 if (latDD !== null && lonDD !== null) {
@@ -495,7 +505,7 @@
             });
         }
 
-        // Muat Objek Image dari Blob URL
+        // Muat Objek Image dari Blob URL dengan batas waktu 10 detik
         function loadImageAsync(blobUrl) {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -505,7 +515,7 @@
                         done = true;
                         resolve(null);
                     }
-                }, 4000);
+                }, 10000);
 
                 img.onload = () => {
                     if (!done) {
@@ -525,17 +535,18 @@
             });
         }
 
-        // Reverse Geocoding Koordinat GPS ke Nama Lokasi Lengkap
+        // Reverse Geocoding Multi-Provider: OSM Nominatim & BigDataCloud (Sangat Cepat & Ramah Mobile)
         async function fetchAddressFromCoords(lat, lon) {
             const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
             if (geocodeCache.has(key)) {
                 return geocodeCache.get(key);
             }
 
+            // Provider 1: OpenStreetMap Nominatim
             try {
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3500);
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
 
                 const res = await fetch(url, {
                     signal: controller.signal,
@@ -543,36 +554,71 @@
                 });
                 clearTimeout(timeoutId);
 
-                if (!res.ok) throw new Error('Network error');
-                const data = await res.json();
-                const addr = data.address || {};
+                if (res.ok) {
+                    const data = await res.json();
+                    const addr = data.address || {};
 
-                const part1 = addr.village || addr.suburb || addr.neighbourhood || addr.road || addr.quarter || addr.hamlet || '';
-                const part2 = addr.county || addr.city_district || addr.district || '';
-                let line1 = '';
-                if (part1 && part2) line1 = `${part1}, Kec. ${part2},`;
-                else if (part1) line1 = `${part1},`;
-                else if (part2) line1 = `Kec. ${part2},`;
+                    const part1 = addr.village || addr.suburb || addr.neighbourhood || addr.road || addr.quarter || addr.hamlet || '';
+                    const part2 = addr.county || addr.city_district || addr.district || '';
+                    let line1 = '';
+                    if (part1 && part2) line1 = `${part1}, Kec. ${part2},`;
+                    else if (part1) line1 = `${part1},`;
+                    else if (part2) line1 = `Kec. ${part2},`;
 
-                const city = addr.city || addr.regency || addr.municipality || addr.town || '';
-                const state = addr.state || '';
-                const postcode = addr.postcode || '';
-                let line2 = '';
-                if (city && state) line2 = `${city}, ${state} ${postcode}`.trim();
-                else if (city) line2 = `${city} ${postcode}`.trim();
-                else if (state) line2 = `${state} ${postcode}`.trim();
+                    const city = addr.city || addr.regency || addr.municipality || addr.town || '';
+                    const state = addr.state || '';
+                    const postcode = addr.postcode || '';
+                    let line2 = '';
+                    if (city && state) line2 = `${city}, ${state} ${postcode}`.trim();
+                    else if (city) line2 = `${city} ${postcode}`.trim();
+                    else if (state) line2 = `${state} ${postcode}`.trim();
 
-                const result = { line1, line2 };
-                geocodeCache.set(key, result);
-                return result;
+                    if (line1 || line2) {
+                        const result = { line1, line2 };
+                        geocodeCache.set(key, result);
+                        return result;
+                    }
+                }
             } catch (e) {
-                const result = {
-                    line1: `GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`,
-                    line2: ''
-                };
-                geocodeCache.set(key, result);
-                return result;
+                // Lanjut coba provider 2 jika Nominatim lambat / terblokir di jaringan seluler
             }
+
+            // Provider 2: BigDataCloud Reverse Geocoding (Bebas CORS, sangat stabil di seluler)
+            try {
+                const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const res = await fetch(bdcUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    const locality = data.locality || data.principalSubdivision || '';
+                    const city = data.city || data.localityInfo?.administrative?.[2]?.name || '';
+                    const province = data.principalSubdivision || '';
+                    const postcode = data.postcode || '';
+
+                    let line1 = locality ? `${locality},` : '';
+                    let line2 = city ? `${city}, ${province} ${postcode}`.trim() : `${province} ${postcode}`.trim();
+
+                    if (line1 || line2) {
+                        const result = { line1, line2 };
+                        geocodeCache.set(key, result);
+                        return result;
+                    }
+                }
+            } catch (e) {
+                // Fallback ke koordinat
+            }
+
+            // Fallback Terakhir: Koordinat Presisi
+            const result = {
+                line1: `GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`,
+                line2: ''
+            };
+            geocodeCache.set(key, result);
+            return result;
         }
 
         // Fungsi Sentral Mengambil Data Efektif Suatu Foto
@@ -659,6 +705,11 @@
                 const dateStr = `${dateObj.getDate()} ${MONTHS[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
 
                 const hasGps = !!exifResult.gps;
+                let initialLoc1 = '';
+                let initialLoc2 = '';
+                if (hasGps) {
+                    initialLoc1 = `GPS: ${exifResult.gps.lat.toFixed(6)}, ${exifResult.gps.lon.toFixed(6)}`;
+                }
 
                 const photoItem = {
                     id: Date.now() + Math.random().toString(),
@@ -674,8 +725,8 @@
                     origTimeStr: timeStr,
                     origDayStr: dayStr,
                     origDateStr: dateStr,
-                    origLoc1: '',
-                    origLoc2: '',
+                    origLoc1: initialLoc1,
+                    origLoc2: initialLoc2,
                     hasGps: hasGps,
                     hasExif: !!exifResult.dateObj,
 
@@ -854,7 +905,7 @@
                     statusBadge = `<span class="text-[9px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded ml-1">Batch Override</span>`;
                 } else if (isManualActive && item.customEdit) {
                     statusBadge = `<span class="text-[9px] bg-purple-500/20 text-purple-300 px-1 py-0.2 rounded ml-1">Diedit Manual</span>`;
-                } else if (item.hasGps && item.origLoc1) {
+                } else if (item.hasGps) {
                     statusBadge = `<span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 py-0.2 rounded ml-1">GPS EXIF</span>`;
                 } else {
                     statusBadge = `<span class="text-[9px] bg-slate-800 text-slate-500 px-1 py-0.2 rounded ml-1">Tanpa GPS (Kosong)</span>`;
