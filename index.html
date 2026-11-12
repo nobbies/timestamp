@@ -398,25 +398,27 @@
 
         function convertDMSToDD(dms, ref) {
             if (!dms || dms.length < 3) return null;
-            function parseCoord(val) {
-                if (typeof val === 'number') return val;
-                if (val && typeof val === 'object') {
-                    if (val.numerator !== undefined && val.denominator !== undefined) {
-                        return val.denominator !== 0 ? val.numerator / val.denominator : 0;
+                function parseCoord(val) {
+                    if (typeof val === 'number') return val;
+                    if (val && typeof val === 'object') {
+                        if (val.numerator !== undefined && val.denominator !== undefined) {
+                            return val.denominator !== 0 ? val.numerator / val.denominator : 0;
+                        }
                     }
+                    const num = parseFloat(val);
+                    return isNaN(num) ? 0 : num;
                 }
-                const num = parseFloat(val);
-                return isNaN(num) ? 0 : num;
-            }
 
-            const deg = parseCoord(dms[0]);
-            const min = parseCoord(dms[1]);
-            const sec = parseCoord(dms[2]);
+                const deg = parseCoord(dms[0]);
+                const min = parseCoord(dms[1]);
+                const sec = parseCoord(dms[2]);
 
-            let dd = deg + (min / 60) + (sec / 3600);
-            if (ref === 'S' || ref === 'W') {
-                dd = -dd;
-            }
+                let dd = deg + (min / 60) + (sec / 3600);
+    
+                // Validasi arah mata angin (Ref: S untuk Lintang Selatan, W untuk Bujur Barat dijadikan negatif)
+                if (ref && (ref.toUpperCase() === 'S' || ref.toUpperCase() === 'W')) {
+                    dd = -dd;
+                }
             return dd;
         }
 
@@ -469,15 +471,17 @@
                             const dateTimeOriginal = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime") || allTags.DateTimeOriginal || allTags.DateTime;
                             const dateObj = parseExifDate(dateTimeOriginal);
 
-                            const lat = EXIF.getTag(this, "GPSLatitude") || allTags.GPSLatitude;
+                            let lat = EXIF.getTag(this, "GPSLatitude") || allTags.GPSLatitude;
                             let latRef = EXIF.getTag(this, "GPSLatitudeRef") || allTags.GPSLatitudeRef;
-                            const lon = EXIF.getTag(this, "GPSLongitude") || allTags.GPSLongitude;
+                            let lon = EXIF.getTag(this, "GPSLongitude") || allTags.GPSLongitude;
                             let lonRef = EXIF.getTag(this, "GPSLongitudeRef") || allTags.GPSLongitudeRef;
 
                             let gps = null;
                             if (lat && lon) {
-                                if (!latRef) latRef = 'S';
+                                // Otomatis set default 'S' (Selatan) dan 'E' (Timur) untuk wilayah Indonesia jika ref kosong
+                                if (!latRef) latRef = 'S'; 
                                 if (!lonRef) lonRef = 'E';
+
                                 const latDD = convertDMSToDD(lat, latRef);
                                 const lonDD = convertDMSToDD(lon, lonRef);
                                 if (latDD !== null && lonDD !== null) {
