@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo TimeStamp Batch Pro - Cap Waktu, EXIF GPS & Kompresi Foto</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Library Exif-JS untuk membaca metadata foto -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
+    <!-- JSZip & FileSaver untuk Unduh Batch ZIP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Google Fonts: Oswald (Jam Besar) & Inter (Teks Tanggal & Lokasi) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-6 lg:p-8 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full bg-slate-800 rounded-2xl shadow-2xl border border-slate-700 p-5 md:p-8">
+        
+        <!-- Header -->
+        <header class="mb-6 border-b border-slate-700/80 pb-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <div class="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">
+                    ⚡ Smart Photo TimeStamp & Compression
+                </div>
+                <h1 class="text-2xl md:text-3xl font-extrabold text-white">📸 Batch Photo TimeStamp & Kompresor</h1>
+                <p class="text-xs md:text-sm text-slate-400 mt-1">
+                    Cap waktu EXIF otomatis, ukuran proporsional, kompresi fleksibel, dan mekanisme unduh cerdas (.JPG untuk 1 foto, .ZIP untuk banyak foto).
+                </p>
+            </div>
+            <div id="batchStats" class="hidden md:flex items-center gap-3 bg-slate-900/80 border border-slate-700 px-4 py-2.5 rounded-xl text-xs">
+                <span class="text-slate-400">Total Foto: <strong id="totalPhotosCount" class="text-amber-400 text-sm">0</strong></span>
+                <span class="text-slate-600">|</span>
+                <span class="text-slate-400">Terproses: <strong id="processedPhotosCount" class="text-emerald-400 text-sm">0</strong></span>
+            </div>
+        </header>
+
+        <!-- Main Grid Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Kolom Kiri: Pengaturan & Form (5 Kolom) -->
+            <div class="lg:col-span-5 space-y-5">
+                
+                <!-- 1. Area Unggah Foto Batch -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-semibold text-slate-200">1. Unggah Foto (1 Foto atau Banyak Sekaligus)</label>
+                    <label id="dropZone" class="cursor-pointer flex flex-col items-center justify-center p-5 border-2 border-dashed border-blue-500/50 hover:border-amber-400 bg-slate-900/60 hover:bg-slate-900 rounded-xl transition group">
+                        <span class="text-3xl mb-1 group-hover:scale-110 transition-transform">📂</span>
+                        <span class="text-sm font-medium text-blue-400 group-hover:text-amber-300 text-center">Klik atau Drag & Drop Foto ke Sini</span>
+                        <span class="text-xs text-slate-400 mt-1 text-center">Bisa 1 foto atau pilih banyak foto sekaligus</span>
+                        <input type="file" id="uploadImages" accept="image/*, .jpg, .jpeg, .png, .webp, .heic" multiple class="hidden">
+                    </label>
+                </div>
+
+                <!-- 2. Pengaturan Ukuran & Posisi Timestamp -->
+                <div class="space-y-3 pt-3 border-t border-slate-700/70">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-semibold text-slate-200">2. Ukuran & Posisi Cap Waktu</label>
+                        <span id="sizeValueDisplay" class="text-xs font-mono bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-bold">65% (Kecil/Kompak)</span>
+                    </div>
+
+                    <!-- Slider Ukuran -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs text-slate-400">
+                            <span>Ukuran Timestamp:</span>
+                            <span class="text-amber-400 font-medium">Kompak</span>
+                        </div>
+                        <input type="range" id="sizeSlider" min="35" max="100" value="65" step="5" class="w-full accent-amber-500 cursor-pointer">
+                        <div class="flex justify-between text-[10px] text-slate-500">
+                            <span>Sangat Kecil (35%)</span>
+                            <span class="text-amber-400 font-medium">Kecil / Proporsional (65%)</span>
+                            <span>Normal (100%)</span>
+                        </div>
+                    </div>
+
+                    <!-- Pilihan 4 Sudut Posisi Penempatan Timestamp -->
+                    <div class="pt-1.5">
+                        <label class="text-xs font-semibold text-slate-300 block mb-1.5">Pilihan Sudut Posisi Timestamp:</label>
+                        <div class="grid grid-cols-2 gap-2" id="positionButtonGroup">
+                            <button type="button" data-pos="top-left" class="pos-btn flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-700 bg-slate-900/60 hover:bg-slate-700/60 text-slate-300 text-xs font-medium transition cursor-pointer">
+                                <span>↖️</span> Kiri Atas
+                            </button>
+                            <button type="button" data-pos="top-right" class="pos-btn flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-700 bg-slate-900/60 hover:bg-slate-700/60 text-slate-300 text-xs font-medium transition cursor-pointer">
+                                <span>↗️</span> Kanan Atas
+                            </button>
+                            <button type="button" data-pos="bottom-left" class="pos-btn active flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-amber-500/80 bg-amber-500/15 text-amber-300 text-xs font-bold transition shadow-sm cursor-pointer">
+                                <span>↙️</span> Kiri Bawah (Default)
+                            </button>
+                            <button type="button" data-pos="bottom-right" class="pos-btn flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-700 bg-slate-900/60 hover:bg-slate-700/60 text-slate-300 text-xs font-medium transition cursor-pointer">
+                                <span>↘️</span> Kanan Bawah
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Pengaturan Kompresi Foto -->
+                <div class="space-y-3 pt-3 border-t border-slate-700/70">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
+                            <span>🗜️</span> 3. Kompresi & Ukuran File Foto
+                        </label>
+                        <span id="qualityValueDisplay" class="text-xs font-mono bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-bold">80% (Optimal)</span>
+                    </div>
+
+                    <!-- Slider Kualitas JPEG -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs text-slate-400">
+                            <span>Kualitas Gambar (JPEG Quality):</span>
+                            <span id="qualityPercentText" class="text-blue-300 font-medium">80%</span>
+                        </div>
+                        <input type="range" id="qualitySlider" min="20" max="100" value="80" step="5" class="w-full accent-blue-500 cursor-pointer">
+                        <div class="flex justify-between text-[10px] text-slate-500">
+                            <span>Sangat Hemat (20%)</span>
+                            <span class="text-blue-400 font-medium">Optimal (80%)</span>
+                            <span>Maksimal / Asli (100%)</span>
+                        </div>
+                    </div>
+
+                    <!-- Opsi Resize Dimensi & Batas Ukuran File (Target KB) -->
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Maks. Resolusi (Resize):</label>
+                            <select id="maxDimensionSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-400">
+                                <option value="0">Ukuran Asli (Tanpa Resize)</option>
+                                <option value="2048">2K (Maks. 2048px)</option>
+                                <option value="1920" selected>Full HD (1920px - Direkomendasikan)</option>
+                                <option value="1280">HD (1280px - Hemat Memori)</option>
+                                <option value="1024">Web / Laporan (1024px)</option>
+                                <option value="800">Sangat Kecil (800px)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Target Maks. File Size:</label>
+                            <select id="targetFileSizeSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-400">
+                                <option value="0" selected>Bebas (Sesuai Kualitas)</option>
+                                <option value="200">Maksimal 200 KB</option>
+                                <option value="300">Maksimal 300 KB</option>
+                                <option value="500">Maksimal 500 KB (Standar Upload)</option>
+                                <option value="1000">Maksimal 1 MB (Standar Dokumen)</option>
+                                <option value="2000">Maksimal 2 MB</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Live Compression Stat Pill -->
+                    <div id="compressionStatPill" class="hidden bg-slate-900/90 border border-blue-500/30 p-2.5 rounded-lg text-xs flex items-center justify-between text-slate-300">
+                        <span class="text-[11px]">Asli: <strong id="originalSizeText" class="text-slate-100 font-mono">-</strong></span>
+                        <span class="text-blue-400">➔</span>
+                        <span class="text-[11px]">Hasil: <strong id="compressedSizeText" class="text-emerald-400 font-mono">-</strong></span>
+                        <span id="reductionBadge" class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-semibold">-0%</span>
+                    </div>
+                </div>
+
+                <!-- 4. Kotak Kontrol: Checkbox Edit Timestamp Manual -->
+                <div class="space-y-4 pt-3 border-t border-slate-700/70">
+                    
+                    <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-700 space-y-2">
+                        <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                            <input type="checkbox" id="editTimestampToggle" class="w-4 h-4 rounded bg-slate-800 border-slate-600 text-amber-500 focus:ring-0 accent-amber-500">
+                            <span class="text-xs font-bold text-amber-400">✏️ 4. Aktifkan Edit Timestamp & Lokasi Manual</span>
+                        </label>
+                        <p id="toggleHint" class="text-[11px] text-slate-400 leading-relaxed">
+                            <span class="text-emerald-400 font-medium">Mode Otomatis Aktif:</span> Data jam, tanggal, dan lokasi murni dari EXIF asli masing-masing foto. Jika foto tidak memiliki GPS, lokasi otomatis kosong.
+                        </p>
+                    </div>
+
+                    <!-- Form Input Waktu & Lokasi (Disabled jika checkbox tidak dicentang) -->
+                    <div id="inputFormContainer" class="space-y-3 opacity-60 pointer-events-none transition-all duration-200">
+                        
+                        <!-- Pilihan Scope Edit -->
+                        <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/70 space-y-1.5">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-slate-300 font-semibold text-[11px]">Cakupan Edit:</span>
+                                <button type="button" id="resetCurrentPhotoBtn" class="text-[11px] text-amber-400 hover:text-amber-300 underline hidden">
+                                    ↺ Reset foto ini ke EXIF asli
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-4 text-xs pt-1">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-slate-200">
+                                    <input type="radio" name="applyScope" value="current" checked class="accent-amber-500">
+                                    <span>Foto ini saja</span>
+                                </label>
+                                <label class="flex items-center gap-1.5 cursor-pointer text-slate-200">
+                                    <input type="radio" name="applyScope" value="all" class="accent-amber-500">
+                                    <span>Semua foto batch</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Jam & Hari -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1">Jam (HH:mm):</label>
+                                <input type="text" id="timeInput" value="" placeholder="16:59" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400 font-mono">
+                            </div>
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1">Hari:</label>
+                                <input type="text" id="dayInput" value="" placeholder="Kamis" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400">
+                            </div>
+                        </div>
+
+                        <!-- Tanggal Lengkap -->
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Tanggal Lengkap:</label>
+                            <input type="text" id="dateInput" value="" placeholder="29 Oktober 2026" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400">
+                        </div>
+
+                        <!-- Lokasi Baris 1 & 2 -->
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Lokasi Baris 1 (Desa / Kecamatan / Jalan):</label>
+                            <input type="text" id="locationLine1" value="" placeholder="(Kosong jika tidak ada GPS EXIF)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400">
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-400 block mb-1">Lokasi Baris 2 (Kota / Provinsi / Kode Pos):</label>
+                            <input type="text" id="locationLine2" value="" placeholder="(Kosong jika tidak ada GPS EXIF)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. MEKANISME UNDUH CERDAS & TOMBOL AKSI -->
+                <div class="pt-2 space-y-2.5">
+                    
+                    <!-- Tombol Utama: Otomatis Menjadi .JPG jika 1 foto, atau .ZIP jika banyak foto -->
+                    <button id="mainDownloadBtn" disabled class="w-full bg-slate-700 text-slate-400 font-bold py-3.5 px-4 rounded-xl cursor-not-allowed transition flex items-center justify-center gap-2 shadow-lg">
+                        <span id="mainDownloadIcon">⬇️</span>
+                        <span id="mainDownloadText">Unduh Foto (.JPG)</span>
+                    </button>
+
+                    <!-- Tombol Sekunder (Hanya Muncul Jika Lebih Dari 1 Foto): Unduh Foto Terpilih Saja Sebagai .JPG -->
+                    <button id="downloadCurrentSingleBtn" class="hidden w-full bg-slate-900/90 hover:bg-slate-700/80 border border-slate-600 text-slate-200 font-medium py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-2 text-xs">
+                        <span>🖼️</span>
+                        <span id="downloadCurrentSingleText">Unduh Foto Terpilih Saja (.JPG)</span>
+                    </button>
+
+                    <!-- Tombol Proses Batch -->
+                    <button id="processAllBtn" disabled class="w-full bg-slate-900/40 hover:bg-slate-700/60 border border-slate-700/80 text-slate-400 font-medium py-2 px-3 rounded-lg cursor-not-allowed transition flex items-center justify-center gap-2 text-xs">
+                        <span id="processIcon">⚡</span>
+                        <span id="processText">Terapkan Cap Waktu & Kompres</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Kolom Kanan: Pratinjau Canvas & Daftar Foto (7 Kolom) -->
+            <div class="lg:col-span-7 space-y-4">
+                
+                <!-- Pratinjau Foto Aktif -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-semibold text-slate-200">Pratinjau Foto Terpilih</label>
+                        <span id="currentPhotoLabel" class="text-xs text-slate-400 truncate max-w-[280px]">Belum ada foto</span>
+                    </div>
+                    <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-xl p-2.5 flex items-center justify-center min-h-[320px] max-h-[460px] overflow-hidden relative">
+                        <canvas id="canvas" class="max-w-full max-h-[440px] object-contain rounded-lg shadow-xl hidden"></canvas>
+                        <div id="placeholderText" class="text-center p-6 text-slate-500 text-sm">
+                            <span class="text-4xl block mb-2 opacity-50">🖼️</span>
+                            Pilih atau drag & drop foto ke kotak unggah di sebelah kiri.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daftar Koleksi Foto Batch -->
+                <div class="bg-slate-900/80 border border-slate-700/80 rounded-xl p-3.5 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-xs font-bold text-slate-200 uppercase tracking-wide">Daftar Foto Terimpor</h3>
+                            <span id="badgePhotoCount" class="text-[10px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded-full">0 Foto</span>
+                        </div>
+                        <button id="clearAllBtn" class="text-[11px] text-red-400 hover:text-red-300 transition hidden">
+                            🗑️ Bersihkan Semua
+                        </button>
+                    </div>
+
+                    <!-- Progress Bar Saat Memuat / Memproses -->
+                    <div id="progressContainer" class="hidden space-y-1">
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span id="progressText">Memproses foto...</span>
+                            <span id="progressPercent">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div id="progressBar" class="bg-amber-500 h-1.5 rounded-full transition-all duration-200" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Kontainer List Thumbnail Foto -->
+                    <div id="photoGrid" class="max-h-[220px] overflow-y-auto space-y-2 pr-1 text-xs">
+                        <div class="text-center py-6 text-slate-500 text-xs italic">
+                            Belum ada file dalam antrean
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Aplikasi Logika Batch, EXIF GPS, Kompresi & Smart Download -->
+    <script>
+        // DOM Elements
+        const uploadImages = document.getElementById('uploadImages');
+        const dropZone = document.getElementById('dropZone');
+        const sizeSlider = document.getElementById('sizeSlider');
+        const sizeValueDisplay = document.getElementById('sizeValueDisplay');
+
+        // Elemen Kompresi
+        const qualitySlider = document.getElementById('qualitySlider');
+        const qualityValueDisplay = document.getElementById('qualityValueDisplay');
+        const qualityPercentText = document.getElementById('qualityPercentText');
+        const maxDimensionSelect = document.getElementById('maxDimensionSelect');
+        const targetFileSizeSelect = document.getElementById('targetFileSizeSelect');
+        const compressionStatPill = document.getElementById('compressionStatPill');
+        const originalSizeText = document.getElementById('originalSizeText');
+        const compressedSizeText = document.getElementById('compressedSizeText');
+        const reductionBadge = document.getElementById('reductionBadge');
+
+        // Elemen Edit Timestamp
+        const editTimestampToggle = document.getElementById('editTimestampToggle');
+        const inputFormContainer = document.getElementById('inputFormContainer');
+        const toggleHint = document.getElementById('toggleHint');
+        const resetCurrentPhotoBtn = document.getElementById('resetCurrentPhotoBtn');
+
+        const timeInput = document.getElementById('timeInput');
+        const dayInput = document.getElementById('dayInput');
+        const dateInput = document.getElementById('dateInput');
+        const locationLine1 = document.getElementById('locationLine1');
+        const locationLine2 = document.getElementById('locationLine2');
+
+        // Elemen Mekanisme Unduh Pintar
+        const mainDownloadBtn = document.getElementById('mainDownloadBtn');
+        const mainDownloadIcon = document.getElementById('mainDownloadIcon');
+        const mainDownloadText = document.getElementById('mainDownloadText');
+        const downloadCurrentSingleBtn = document.getElementById('downloadCurrentSingleBtn');
+        const downloadCurrentSingleText = document.getElementById('downloadCurrentSingleText');
+        const processAllBtn = document.getElementById('processAllBtn');
+        const processText = document.getElementById('processText');
+
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const canvas = document.getElementById('canvas');
+        const placeholderText = document.getElementById('placeholderText');
+        const currentPhotoLabel = document.getElementById('currentPhotoLabel');
+        const photoGrid = document.getElementById('photoGrid');
+        const badgePhotoCount = document.getElementById('badgePhotoCount');
+        const totalPhotosCount = document.getElementById('totalPhotosCount');
+        const processedPhotosCount = document.getElementById('processedPhotosCount');
+        const batchStats = document.getElementById('batchStats');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const progressPercent = document.getElementById('progressPercent');
+
+        // State Koleksi Foto & Override
+        let photoBatch = [];
+        let selectedIndex = -1;
+        const geocodeCache = new Map();
+        let previewStatTimeout = null;
+        let currentPosition = 'bottom-left';
+
+        let globalBatchOverride = {
+            timeStr: '',
+            dayStr: '',
+            dateStr: '',
+            loc1: '',
+            loc2: '',
+            isActive: false
+        };
+
+        const DAYS = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+        // Format Byte ke KB / MB
+        function formatBytes(bytes) {
+            if (!bytes || bytes <= 0) return '0 KB';
+            if (bytes < 1024) return bytes + ' B';
+            const k = 1024;
+            const sizes = ['KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes / k) / Math.log(k));
+            const val = (bytes / Math.pow(k, i + 1)).toFixed(1);
+            return `${val} ${sizes[i]}`;
+        }
+
+        // Pastikan font Google terload sebelum render
+        document.fonts.ready.then(() => {
+            if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
+                renderCurrentPreview();
+            }
+        });
+
+        // Validasi ekstensi/tipe file gambar
+        function isImageFile(file) {
+            if (!file) return false;
+            if (file.type && file.type.startsWith('image/')) return true;
+            return /\.(jpe?g|png|webp|bmp|gif|heic|tiff?)$/i.test(file.name);
+        }
+
+        // Konversi koordinat DMS EXIF ke Decimal Degrees
+        function convertDMSToDD(dms, ref) {
+            if (!dms || dms.length < 3) return null;
+            function parseCoord(val) {
+                if (typeof val === 'number') return val;
+                if (val && typeof val === 'object') {
+                    if (val.numerator !== undefined && val.denominator !== undefined) {
+                        return val.denominator !== 0 ? val.numerator / val.denominator : 0;
+                    }
+                }
+                const num = parseFloat(val);
+                return isNaN(num) ? 0 : num;
+            }
+
+            const deg = parseCoord(dms[0]);
+            const min = parseCoord(dms[1]);
+            const sec = parseCoord(dms[2]);
+
+            let dd = deg + (min / 60) + (sec / 3600);
+            if (ref === 'S' || ref === 'W') {
+                dd = -dd;
+            }
+            return dd;
+        }
+
+        // Parser tanggal EXIF
+        function parseExifDate(exifDateStr) {
+            if (!exifDateStr) return null;
+            const parts = exifDateStr.split(' ');
+            if (parts.length < 2) return null;
+            const dateParts = parts[0].split(':');
+            const timeParts = parts[1].split(':');
+            if (dateParts.length < 3 || timeParts.length < 3) return null;
+            
+            return new Date(
+                parseInt(dateParts[0]), 
+                parseInt(dateParts[1]) - 1, 
+                parseInt(dateParts[2]), 
+                parseInt(timeParts[0]), 
+                parseInt(timeParts[1]), 
+                parseInt(timeParts[2])
+            );
+        }
+
+        // Ekstraksi Metadata EXIF dengan Timeout Pengaman
+        function extractExifData(file) {
+            return new Promise((resolve) => {
+                let finished = false;
+                const timer = setTimeout(() => {
+                    if (!finished) {
+                        finished = true;
+                        resolve({ dateObj: null, gps: null });
+                    }
+                }, 1500);
+
+                try {
+                    EXIF.getData(file, function() {
+                        if (finished) return;
+                        finished = true;
+                        clearTimeout(timer);
+
+                        try {
+                            const dateTimeOriginal = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime");
+                            const dateObj = parseExifDate(dateTimeOriginal);
+
+                            const lat = EXIF.getTag(this, "GPSLatitude");
+                            const latRef = EXIF.getTag(this, "GPSLatitudeRef");
+                            const lon = EXIF.getTag(this, "GPSLongitude");
+                            const lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+
+                            let gps = null;
+                            if (lat && lon && latRef && lonRef) {
+                                const latDD = convertDMSToDD(lat, latRef);
+                                const lonDD = convertDMSToDD(lon, lonRef);
+                                if (latDD !== null && lonDD !== null) {
+                                    gps = { lat: latDD, lon: lonDD };
+                                }
+                            }
+
+                            resolve({ dateObj, gps, dateTimeOriginal });
+                        } catch (err) {
+                            resolve({ dateObj: null, gps: null });
+                        }
+                    });
+                } catch (e) {
+                    if (!finished) {
+                        finished = true;
+                        clearTimeout(timer);
+                        resolve({ dateObj: null, gps: null });
+                    }
+                }
+            });
+        }
+
+        // Muat Objek Image dari Blob URL
+        function loadImageAsync(blobUrl) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                let done = false;
+                const timer = setTimeout(() => {
+                    if (!done) {
+                        done = true;
+                        resolve(null);
+                    }
+                }, 4000);
+
+                img.onload = () => {
+                    if (!done) {
+                        done = true;
+                        clearTimeout(timer);
+                        resolve(img);
+                    }
+                };
+                img.onerror = () => {
+                    if (!done) {
+                        done = true;
+                        clearTimeout(timer);
+                        resolve(null);
+                    }
+                };
+                img.src = blobUrl;
+            });
+        }
+
+        // Reverse Geocoding Koordinat GPS ke Nama Lokasi Lengkap
+        async function fetchAddressFromCoords(lat, lon) {
+            const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+            if (geocodeCache.has(key)) {
+                return geocodeCache.get(key);
+            }
+
+            try {
+                const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+                const res = await fetch(url, {
+                    signal: controller.signal,
+                    headers: { 'Accept': 'application/json' }
+                });
+                clearTimeout(timeoutId);
+
+                if (!res.ok) throw new Error('Network error');
+                const data = await res.json();
+                const addr = data.address || {};
+
+                const part1 = addr.village || addr.suburb || addr.neighbourhood || addr.road || addr.quarter || addr.hamlet || '';
+                const part2 = addr.county || addr.city_district || addr.district || '';
+                let line1 = '';
+                if (part1 && part2) line1 = `${part1}, Kec. ${part2},`;
+                else if (part1) line1 = `${part1},`;
+                else if (part2) line1 = `Kec. ${part2},`;
+
+                const city = addr.city || addr.regency || addr.municipality || addr.town || '';
+                const state = addr.state || '';
+                const postcode = addr.postcode || '';
+                let line2 = '';
+                if (city && state) line2 = `${city}, ${state} ${postcode}`.trim();
+                else if (city) line2 = `${city} ${postcode}`.trim();
+                else if (state) line2 = `${state} ${postcode}`.trim();
+
+                const result = { line1, line2 };
+                geocodeCache.set(key, result);
+                return result;
+            } catch (e) {
+                const result = {
+                    line1: `GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`,
+                    line2: ''
+                };
+                geocodeCache.set(key, result);
+                return result;
+            }
+        }
+
+        // Fungsi Sentral Mengambil Data Efektif Suatu Foto
+        function getEffectiveData(item) {
+            if (!item) return { timeStr: '', dayStr: '', dateStr: '', loc1: '', loc2: '' };
+
+            if (!editTimestampToggle.checked) {
+                return {
+                    timeStr: item.origTimeStr,
+                    dayStr: item.origDayStr,
+                    dateStr: item.origDateStr,
+                    loc1: item.origLoc1,
+                    loc2: item.origLoc2
+                };
+            }
+
+            const applyScope = document.querySelector('input[name="applyScope"]:checked')?.value || 'current';
+
+            if (applyScope === 'all') {
+                return {
+                    timeStr: globalBatchOverride.timeStr || item.origTimeStr,
+                    dayStr: globalBatchOverride.dayStr || item.origDayStr,
+                    dateStr: globalBatchOverride.dateStr || item.origDateStr,
+                    loc1: globalBatchOverride.loc1 !== undefined ? globalBatchOverride.loc1 : item.origLoc1,
+                    loc2: globalBatchOverride.loc2 !== undefined ? globalBatchOverride.loc2 : item.origLoc2
+                };
+            } else {
+                if (item.customEdit) {
+                    return {
+                        timeStr: item.customEdit.timeStr !== undefined ? item.customEdit.timeStr : item.origTimeStr,
+                        dayStr: item.customEdit.dayStr !== undefined ? item.customEdit.dayStr : item.origDayStr,
+                        dateStr: item.customEdit.dateStr !== undefined ? item.customEdit.dateStr : item.origDateStr,
+                        loc1: item.customEdit.loc1 !== undefined ? item.customEdit.loc1 : item.origLoc1,
+                        loc2: item.customEdit.loc2 !== undefined ? item.customEdit.loc2 : item.origLoc2
+                    };
+                } else {
+                    return {
+                        timeStr: item.origTimeStr,
+                        dayStr: item.origDayStr,
+                        dateStr: item.origDateStr,
+                        loc1: item.origLoc1,
+                        loc2: item.origLoc2
+                    };
+                }
+            }
+        }
+
+        // Penanganan Import Batch yang Bebas Bug
+        async function handleFiles(fileList) {
+            if (!fileList || fileList.length === 0) return;
+
+            const files = Array.from(fileList).filter(isImageFile);
+            if (files.length === 0) {
+                alert('Tidak ada file foto valid yang dipilih.');
+                return;
+            }
+
+            progressContainer.classList.remove('hidden');
+            const totalToLoad = files.length;
+
+            for (let i = 0; i < totalToLoad; i++) {
+                const file = files[i];
+
+                progressText.innerText = `Mengimpor foto (${i + 1}/${totalToLoad}): ${file.name}`;
+                const pct = Math.round(((i + 1) / totalToLoad) * 100);
+                progressBar.style.width = `${pct}%`;
+                progressPercent.innerText = `${pct}%`;
+
+                const exifResult = await extractExifData(file);
+                const blobUrl = URL.createObjectURL(file);
+                const img = await loadImageAsync(blobUrl);
+
+                if (!img) continue;
+
+                let dateObj = exifResult.dateObj;
+                if (!dateObj) {
+                    dateObj = new Date(file.lastModified || Date.now());
+                }
+
+                const hours = String(dateObj.getHours()).padStart(2, '0');
+                const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+                const timeStr = `${hours}:${minutes}`;
+                const dayStr = DAYS[dateObj.getDay()];
+                const dateStr = `${dateObj.getDate()} ${MONTHS[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+
+                const hasGps = !!exifResult.gps;
+
+                const photoItem = {
+                    id: Date.now() + Math.random().toString(),
+                    file: file,
+                    name: file.name,
+                    img: img,
+                    blobUrl: blobUrl,
+                    dateObj: dateObj,
+                    originalSizeBytes: file.size,
+                    compressedSizeBytes: null,
+
+                    // Data Asli (IMMUTABLE dari EXIF / Sistem)
+                    origTimeStr: timeStr,
+                    origDayStr: dayStr,
+                    origDateStr: dateStr,
+                    origLoc1: '',
+                    origLoc2: '',
+                    hasGps: hasGps,
+                    hasExif: !!exifResult.dateObj,
+
+                    customEdit: null,
+                    processedBlob: null
+                };
+
+                photoBatch.push(photoItem);
+
+                if (hasGps) {
+                    fetchAddressFromCoords(exifResult.gps.lat, exifResult.gps.lon).then(addr => {
+                        photoItem.origLoc1 = addr.line1;
+                        photoItem.origLoc2 = addr.line2;
+                        renderBatchList();
+                        if (photoBatch[selectedIndex] === photoItem) {
+                            syncInputsWithSelected();
+                            renderCurrentPreview();
+                        }
+                    });
+                }
+            }
+
+            progressContainer.classList.add('hidden');
+            updateBatchUI();
+
+            if (selectedIndex === -1 && photoBatch.length > 0) {
+                selectPhoto(0);
+            } else if (photoBatch.length > 0) {
+                selectPhoto(selectedIndex);
+            }
+        }
+
+        /**
+         * MEKANISME UI ADAPTIF:
+         * Menyesuaikan teks dan perilaku tombol:
+         * - 0 Foto : Disabled
+         * - 1 Foto : Tombol utama langsung "Unduh Foto (.JPG)" (TANPA ZIP!)
+         * - >1 Foto: Tombol utama "Unduh Semua Sekaligus (.ZIP)" + Tombol sekunder "Unduh Foto Ini Saja (.JPG)"
+         */
+        function updateBatchUI() {
+            totalPhotosCount.innerText = photoBatch.length;
+            badgePhotoCount.innerText = `${photoBatch.length} Foto`;
+
+            const processedCount = photoBatch.filter(p => p.processedBlob !== null).length;
+            processedPhotosCount.innerText = processedCount;
+
+            if (photoBatch.length === 0) {
+                batchStats.classList.add('hidden');
+                clearAllBtn.classList.add('hidden');
+
+                mainDownloadBtn.disabled = true;
+                mainDownloadBtn.className = "w-full bg-slate-700 text-slate-400 font-bold py-3.5 px-4 rounded-xl cursor-not-allowed transition flex items-center justify-center gap-2 shadow-lg";
+                mainDownloadIcon.innerText = "⬇️";
+                mainDownloadText.innerText = "Unduh Foto (.JPG)";
+
+                downloadCurrentSingleBtn.classList.add('hidden');
+
+                processAllBtn.disabled = true;
+                processAllBtn.className = "w-full bg-slate-900/40 border border-slate-700/80 text-slate-500 font-medium py-2 px-3 rounded-lg cursor-not-allowed transition flex items-center justify-center gap-2 text-xs opacity-50";
+                processText.innerText = "Terapkan Cap Waktu & Kompres";
+
+                placeholderText.classList.remove('hidden');
+                canvas.classList.add('hidden');
+                compressionStatPill.classList.add('hidden');
+                currentPhotoLabel.innerText = 'Belum ada foto';
+                clearInputs();
+
+            } else if (photoBatch.length === 1) {
+                // HANYA 1 FOTO: MEKANISME LANGSUNG .JPG (TANPA ZIP)
+                batchStats.classList.remove('hidden');
+                batchStats.classList.add('flex');
+                clearAllBtn.classList.remove('hidden');
+
+                mainDownloadBtn.disabled = false;
+                mainDownloadBtn.className = "w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-3.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg cursor-pointer transform hover:-translate-y-0.5";
+                mainDownloadIcon.innerText = "⬇️";
+                mainDownloadText.innerText = "Unduh Foto Ber-Timestamp (.JPG)";
+
+                downloadCurrentSingleBtn.classList.add('hidden'); // Tidak perlu tombol kedua jika hanya ada 1 foto
+
+                processAllBtn.disabled = false;
+                processAllBtn.className = "w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-medium py-2 px-3 rounded-lg cursor-pointer transition flex items-center justify-center gap-2 text-xs";
+                processText.innerText = "Terapkan Cap Waktu & Kompres Foto";
+
+            } else {
+                // LEBIH DARI 1 FOTO (BATCH): MEKANISME .ZIP & OPSI UNDUH SATUAN
+                batchStats.classList.remove('hidden');
+                batchStats.classList.add('flex');
+                clearAllBtn.classList.remove('hidden');
+
+                mainDownloadBtn.disabled = false;
+                mainDownloadBtn.className = "w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-3.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg cursor-pointer transform hover:-translate-y-0.5";
+                mainDownloadIcon.innerText = "📦";
+                mainDownloadText.innerText = `Unduh Semua Sekaligus (${photoBatch.length} Foto .ZIP)`;
+
+                // Tampilkan opsi unduh foto aktif saja sebagai .JPG
+                downloadCurrentSingleBtn.classList.remove('hidden');
+                const activeName = photoBatch[selectedIndex]?.name || 'Terpilih';
+                downloadCurrentSingleText.innerHTML = `Unduh Foto Ini Saja: <strong class="text-amber-400 truncate max-w-[170px] inline-block align-bottom">${activeName}</strong> (.JPG)`;
+
+                processAllBtn.disabled = false;
+                processAllBtn.className = "w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-medium py-2 px-3 rounded-lg cursor-pointer transition flex items-center justify-center gap-2 text-xs";
+                processText.innerText = `Proses Semua ${photoBatch.length} Foto Sekaligus`;
+            }
+
+            renderBatchList();
+        }
+
+        function clearInputs() {
+            timeInput.value = '';
+            dayInput.value = '';
+            dateInput.value = '';
+            locationLine1.value = '';
+            locationLine2.value = '';
+        }
+
+        // Sinkronisasi Input Form dengan Foto yang Sedang Terpilih
+        function syncInputsWithSelected() {
+            if (selectedIndex < 0 || !photoBatch[selectedIndex]) {
+                clearInputs();
+                resetCurrentPhotoBtn.classList.add('hidden');
+                return;
+            }
+
+            const item = photoBatch[selectedIndex];
+            const applyScope = document.querySelector('input[name="applyScope"]:checked')?.value || 'current';
+
+            if (applyScope === 'all' && globalBatchOverride.isActive) {
+                timeInput.value = globalBatchOverride.timeStr;
+                dayInput.value = globalBatchOverride.dayStr;
+                dateInput.value = globalBatchOverride.dateStr;
+                locationLine1.value = globalBatchOverride.loc1;
+                locationLine2.value = globalBatchOverride.loc2;
+                resetCurrentPhotoBtn.classList.add('hidden');
+            } else {
+                const eff = getEffectiveData(item);
+                timeInput.value = eff.timeStr;
+                dayInput.value = eff.dayStr;
+                dateInput.value = eff.dateStr;
+                locationLine1.value = eff.loc1;
+                locationLine2.value = eff.loc2;
+
+                if (item.customEdit && editTimestampToggle.checked) {
+                    resetCurrentPhotoBtn.classList.remove('hidden');
+                } else {
+                    resetCurrentPhotoBtn.classList.add('hidden');
+                }
+            }
+        }
+
+        // Render Daftar Antrean Foto
+        function renderBatchList() {
+            if (photoBatch.length === 0) {
+                photoGrid.innerHTML = `<div class="text-center py-6 text-slate-500 text-xs italic">Belum ada file dalam antrean</div>`;
+                return;
+            }
+
+            const applyScope = document.querySelector('input[name="applyScope"]:checked')?.value || 'current';
+            const isManualActive = editTimestampToggle.checked;
+
+            photoGrid.innerHTML = '';
+            photoBatch.forEach((item, idx) => {
+                const isSelected = idx === selectedIndex;
+                const isProcessed = item.processedBlob !== null;
+                const eff = getEffectiveData(item);
+
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between p-2 rounded-lg border transition cursor-pointer ${
+                    isSelected ? 'bg-slate-800 border-amber-400 shadow-md' : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                }`;
+
+                div.onclick = () => selectPhoto(idx);
+
+                let statusBadge = '';
+                if (isManualActive && applyScope === 'all') {
+                    statusBadge = `<span class="text-[9px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded ml-1">Batch Override</span>`;
+                } else if (isManualActive && item.customEdit) {
+                    statusBadge = `<span class="text-[9px] bg-purple-500/20 text-purple-300 px-1 py-0.2 rounded ml-1">Diedit Manual</span>`;
+                } else if (item.hasGps && item.origLoc1) {
+                    statusBadge = `<span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 py-0.2 rounded ml-1">GPS EXIF</span>`;
+                } else {
+                    statusBadge = `<span class="text-[9px] bg-slate-800 text-slate-500 px-1 py-0.2 rounded ml-1">Tanpa GPS (Kosong)</span>`;
+                }
+
+                let sizeInfo = `<span class="text-slate-500">${formatBytes(item.originalSizeBytes)}</span>`;
+                if (item.compressedSizeBytes) {
+                    sizeInfo = `<span class="text-slate-400 line-through text-[10px]">${formatBytes(item.originalSizeBytes)}</span> ➔ <strong class="text-emerald-400 font-mono text-[11px]">${formatBytes(item.compressedSizeBytes)}</strong>`;
+                }
+
+                const locDisplay = eff.loc1 ? `<p class="text-[10px] text-slate-400 truncate max-w-[200px]">📍 ${eff.loc1}</p>` : '';
+
+                div.innerHTML = `
+                    <div class="flex items-center gap-2.5 overflow-hidden">
+                        <img src="${item.blobUrl}" class="w-10 h-10 object-cover rounded border border-slate-700 flex-shrink-0">
+                        <div class="overflow-hidden">
+                            <p class="font-medium text-slate-200 truncate max-w-[200px] text-xs">${item.name}</p>
+                            <p class="text-[11px] text-slate-400">
+                                🕒 ${eff.timeStr} • ${eff.dateStr} ${statusBadge}
+                            </p>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                ${locDisplay}
+                                <span class="text-[10px]">${sizeInfo}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        ${isProcessed 
+                            ? `<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-semibold">Siap</span>`
+                            : `<span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">Antrean</span>`
+                        }
+                        <button onclick="event.stopPropagation(); downloadSingle(${idx})" title="Unduh Foto Ini Sebagai .JPG" class="p-1.5 hover:bg-slate-700 rounded text-slate-300 hover:text-white transition">
+                            ⬇️
+                        </button>
+                        <button onclick="event.stopPropagation(); removePhoto(${idx})" title="Hapus foto ini" class="p-1.5 hover:bg-red-500/20 rounded text-slate-400 hover:text-red-400 transition">
+                            ✕
+                        </button>
+                    </div>
+                `;
+                photoGrid.appendChild(div);
+            });
+        }
+
+        // Pilih Foto Tertentu untuk Pratinjau
+        function selectPhoto(idx) {
+            if (idx < 0 || idx >= photoBatch.length) return;
+            selectedIndex = idx;
+            const item = photoBatch[idx];
+            currentPhotoLabel.innerText = `${item.name} (${idx + 1} dari ${photoBatch.length})`;
+
+            syncInputsWithSelected();
+            updateBatchUI(); // Perbarui label tombol unduh foto aktif
+            renderCurrentPreview();
+        }
+
+        // Hapus Foto dari Antrean
+        function removePhoto(idx) {
+            const item = photoBatch[idx];
+            if (item && item.blobUrl) {
+                URL.revokeObjectURL(item.blobUrl);
+            }
+            photoBatch.splice(idx, 1);
+            if (selectedIndex >= photoBatch.length) {
+                selectedIndex = photoBatch.length - 1;
+            }
+            updateBatchUI();
+            if (selectedIndex >= 0) {
+                selectPhoto(selectedIndex);
+            }
+        }
+
+        // Menggambar Timestamp pada Canvas (Mendukung Dimensi Resize, Posisi Sudut & Kompresi)
+        function drawTimestamp(targetCanvas, img, time, day, date, loc1, loc2, sizePercent, maxDim = 0, position = 'bottom-left') {
+            const ctx = targetCanvas.getContext('2d');
+
+            let origW = img.naturalWidth;
+            let origH = img.naturalHeight;
+            let w = origW;
+            let h = origH;
+
+            if (maxDim > 0 && (origW > maxDim || origH > maxDim)) {
+                if (origW >= origH) {
+                    h = Math.round((origH * maxDim) / origW);
+                    w = maxDim;
+                } else {
+                    w = Math.round((origW * maxDim) / origH);
+                    h = maxDim;
+                }
+            }
+
+            targetCanvas.width = w;
+            targetCanvas.height = h;
+
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const baseScale = targetCanvas.width / 1080;
+            const sizeMultiplier = (sizePercent / 100) * 0.65;
+            const s = baseScale * sizeMultiplier;
+
+            const padX = 38 * s;
+            const padY = 40 * s;
+
+            function setTextShadow(blur = 3.5, alpha = 0.88) {
+                ctx.shadowColor = `rgba(0, 0, 0, ${alpha})`;
+                ctx.shadowBlur = blur * s;
+                ctx.shadowOffsetX = 1.2 * s;
+                ctx.shadowOffsetY = 1.2 * s;
+            }
+
+            function clearShadow() {
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+            }
+
+            const timeFontSize = Math.round(92 * s);
+            const dateFontSize = Math.round(24 * s);
+            const locFontSize = Math.round(22 * s);
+            const locLineHeight = 31 * s;
+
+            // Hitung lebar teks komponen
+            ctx.font = `600 ${timeFontSize}px 'Oswald', sans-serif`;
+            const timeWidth = ctx.measureText(time).width;
+
+            ctx.font = `500 ${dateFontSize}px 'Inter', sans-serif`;
+            const dateWidth = Math.max(ctx.measureText(date).width, ctx.measureText(day).width);
+
+            const barSpacingBefore = 16 * s;
+            const barWidth = 3.8 * s;
+            const barSpacingAfter = 14 * s;
+            const timeDateBlockWidth = timeWidth + barSpacingBefore + barWidth + barSpacingAfter + dateWidth;
+
+            let locBlockHeight = 0;
+            if (loc1) locBlockHeight += locLineHeight;
+            if (loc2) locBlockHeight += locLineHeight;
+            if (locBlockHeight > 0) locBlockHeight += 10 * s;
+
+            const isBottom = position.startsWith('bottom');
+            const isRight = position.includes('right');
+
+            // Hitung Koordinat Vertikal (Y)
+            let timeBlockBottomY;
+            if (isBottom) {
+                const locStartY = targetCanvas.height - padY;
+                timeBlockBottomY = locStartY - locBlockHeight;
+            } else {
+                timeBlockBottomY = padY + timeFontSize;
+            }
+
+            // Hitung Koordinat Horizontal (X)
+            let timeStartX;
+            if (isRight) {
+                const blockRightX = targetCanvas.width - padX;
+                timeStartX = blockRightX - timeDateBlockWidth;
+            } else {
+                timeStartX = padX;
+            }
+
+            // 1. Jam Besar (Font Oswald)
+            ctx.font = `600 ${timeFontSize}px 'Oswald', sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'bottom';
+            setTextShadow(5, 0.9);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(time, timeStartX, timeBlockBottomY);
+
+            // 2. Garis Pembatas Kuning
+            const barX = timeStartX + timeWidth + barSpacingBefore;
+            const barTopY = timeBlockBottomY - (timeFontSize * 0.77);
+            const barHeight = timeFontSize * 0.75;
+
+            setTextShadow(3, 0.8);
+            ctx.fillStyle = '#FFB800';
+            ctx.fillRect(barX, barTopY, barWidth, barHeight);
+
+            // 3. Tanggal & Hari
+            const textDateX = barX + barWidth + barSpacingAfter;
+            ctx.font = `500 ${dateFontSize}px 'Inter', sans-serif`;
+            ctx.fillStyle = '#FFFFFF';
+            setTextShadow(4, 0.9);
+
+            ctx.textBaseline = 'top';
+            ctx.fillText(date, textDateX, barTopY + (1.5 * s));
+
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(day, textDateX, barTopY + barHeight);
+
+            // 4. Dua Baris Alamat / Lokasi (Jika Ada)
+            if (loc1 || loc2) {
+                ctx.font = `400 ${locFontSize}px 'Inter', sans-serif`;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                setTextShadow(4, 0.9);
+                ctx.textBaseline = 'bottom';
+
+                const locAlignX = isRight ? (targetCanvas.width - padX) : padX;
+                ctx.textAlign = isRight ? 'right' : 'left';
+
+                if (isBottom) {
+                    let curLocY = targetCanvas.height - padY;
+                    if (loc2) {
+                        ctx.fillText(loc2, locAlignX, curLocY);
+                        curLocY -= locLineHeight;
+                    }
+                    if (loc1) {
+                        ctx.fillText(loc1, locAlignX, curLocY);
+                    }
+                } else {
+                    let curLocY = timeBlockBottomY + (10 * s) + locLineHeight;
+                    if (loc1) {
+                        ctx.fillText(loc1, locAlignX, curLocY);
+                        if (loc2) {
+                            curLocY += locLineHeight;
+                            ctx.fillText(loc2, locAlignX, curLocY);
+                        }
+                    } else if (loc2) {
+                        ctx.fillText(loc2, locAlignX, curLocY);
+                    }
+                }
+            }
+
+            clearShadow();
+        }
+
+        // Kompresi Canvas ke JPEG Blob
+        async function compressCanvasToBlob(targetCanvas, qualityPercent, targetMaxKB = 0) {
+            let q = Math.max(0.1, Math.min(1.0, qualityPercent / 100));
+            let blob = await new Promise(res => targetCanvas.toBlob(res, 'image/jpeg', q));
+
+            if (targetMaxKB > 0 && blob.size > targetMaxKB * 1024) {
+                let minQ = 0.12;
+                let maxQ = q;
+                for (let iter = 0; iter < 4; iter++) {
+                    let midQ = (minQ + maxQ) / 2;
+                    let testBlob = await new Promise(res => targetCanvas.toBlob(res, 'image/jpeg', midQ));
+                    if (testBlob.size <= targetMaxKB * 1024) {
+                        blob = testBlob;
+                        minQ = midQ;
+                    } else {
+                        maxQ = midQ;
+                        blob = testBlob;
+                    }
+                }
+            }
+            return blob;
+        }
+
+        // Render Pratinjau Foto Aktif & Update Statistik Kompresi
+        function renderCurrentPreview() {
+            if (selectedIndex < 0 || !photoBatch[selectedIndex]) return;
+            const item = photoBatch[selectedIndex];
+            const eff = getEffectiveData(item);
+            const sizePercent = parseInt(sizeSlider.value);
+            const maxDim = parseInt(maxDimensionSelect.value);
+
+            drawTimestamp(canvas, item.img, eff.timeStr, eff.dayStr, eff.dateStr, eff.loc1, eff.loc2, sizePercent, maxDim, currentPosition);
+
+            canvas.classList.remove('hidden');
+            placeholderText.classList.add('hidden');
+
+            clearTimeout(previewStatTimeout);
+            previewStatTimeout = setTimeout(async () => {
+                const qualityVal = parseInt(qualitySlider.value);
+                const targetMaxKB = parseInt(targetFileSizeSelect.value);
+                const blob = await compressCanvasToBlob(canvas, qualityVal, targetMaxKB);
+
+                item.processedBlob = blob;
+                item.compressedSizeBytes = blob.size;
+
+                compressionStatPill.classList.remove('hidden');
+                originalSizeText.innerText = formatBytes(item.originalSizeBytes);
+                compressedSizeText.innerText = formatBytes(blob.size);
+
+                const pctSaved = Math.max(0, Math.round(((item.originalSizeBytes - blob.size) / item.originalSizeBytes) * 100));
+                reductionBadge.innerText = `-${pctSaved}%`;
+
+                renderBatchList();
+            }, 120);
+        }
+
+        // Terapkan Perubahan Input Manual
+        function handleManualInputUpdate() {
+            if (!editTimestampToggle.checked) return;
+
+            const applyScope = document.querySelector('input[name="applyScope"]:checked')?.value || 'current';
+
+            if (applyScope === 'all') {
+                globalBatchOverride = {
+                    timeStr: timeInput.value,
+                    dayStr: dayInput.value,
+                    dateStr: dateInput.value,
+                    loc1: locationLine1.value,
+                    loc2: locationLine2.value,
+                    isActive: true
+                };
+                photoBatch.forEach(item => item.processedBlob = null);
+            } else {
+                if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
+                    const item = photoBatch[selectedIndex];
+                    item.customEdit = {
+                        timeStr: timeInput.value,
+                        dayStr: dayInput.value,
+                        dateStr: dateInput.value,
+                        loc1: locationLine1.value,
+                        loc2: locationLine2.value
+                    };
+                    item.processedBlob = null;
+                    resetCurrentPhotoBtn.classList.remove('hidden');
+                }
+            }
+
+            renderBatchList();
+            renderCurrentPreview();
+        }
+
+        // Reset Data EXIF Asli
+        resetCurrentPhotoBtn.addEventListener('click', () => {
+            if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
+                const item = photoBatch[selectedIndex];
+                item.customEdit = null;
+                item.processedBlob = null;
+                syncInputsWithSelected();
+                renderBatchList();
+                renderCurrentPreview();
+            }
+        });
+
+        // Radio Scope
+        document.querySelectorAll('input[name="applyScope"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const newScope = e.target.value;
+
+                if (newScope === 'all') {
+                    globalBatchOverride = {
+                        timeStr: timeInput.value,
+                        dayStr: dayInput.value,
+                        dateStr: dateInput.value,
+                        loc1: locationLine1.value,
+                        loc2: locationLine2.value,
+                        isActive: true
+                    };
+                    resetCurrentPhotoBtn.classList.add('hidden');
+                } else {
+                    globalBatchOverride.isActive = false;
+                    syncInputsWithSelected();
+                }
+
+                renderBatchList();
+                renderCurrentPreview();
+            });
+        });
+
+        // Toggle Checkbox Edit Manual
+        editTimestampToggle.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            if (isChecked) {
+                inputFormContainer.classList.remove('opacity-60', 'pointer-events-none');
+                toggleHint.innerHTML = `<span class="text-amber-400 font-semibold">Mode Edit Manual Aktif:</span> Anda dapat mengubah jam, tanggal, atau lokasi. Pilih apakah diterapkan ke <em>Foto ini saja</em> atau <em>Semua foto batch</em>.`;
+                syncInputsWithSelected();
+            } else {
+                inputFormContainer.classList.add('opacity-60', 'pointer-events-none');
+                toggleHint.innerHTML = `<span class="text-emerald-400 font-medium">Mode Otomatis Aktif:</span> Data jam, tanggal, dan lokasi murni dari EXIF asli masing-masing foto. Jika foto tidak memiliki GPS, lokasi otomatis kosong.`;
+                globalBatchOverride.isActive = false;
+                syncInputsWithSelected();
+            }
+            renderBatchList();
+            renderCurrentPreview();
+        });
+
+        // Event Input Teks
+        [timeInput, dayInput, dateInput, locationLine1, locationLine2].forEach(input => {
+            input.addEventListener('input', handleManualInputUpdate);
+        });
+
+        // Slider Ukuran Timestamp
+        sizeSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            let label = `${val}%`;
+            if (val <= 45) label += ' (Sangat Kecil)';
+            else if (val <= 70) label += ' (Kecil/Kompak)';
+            else if (val <= 85) label += ' (Sedang)';
+            else label += ' (Besar)';
+
+            sizeValueDisplay.innerText = label;
+            renderCurrentPreview();
+        });
+
+        // Tombol Pilihan 4 Sudut Posisi Timestamp
+        document.querySelectorAll('.pos-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const targetBtn = e.currentTarget;
+                const pos = targetBtn.dataset.pos;
+                currentPosition = pos;
+
+                document.querySelectorAll('.pos-btn').forEach(b => {
+                    b.classList.remove('active', 'border-amber-500/80', 'bg-amber-500/15', 'text-amber-300', 'font-bold', 'shadow-sm');
+                    b.classList.add('border-slate-700', 'bg-slate-900/60', 'text-slate-300', 'font-medium');
+                });
+
+                targetBtn.classList.add('active', 'border-amber-500/80', 'bg-amber-500/15', 'text-amber-300', 'font-bold', 'shadow-sm');
+                targetBtn.classList.remove('border-slate-700', 'bg-slate-900/60', 'text-slate-300', 'font-medium');
+
+                photoBatch.forEach(item => item.processedBlob = null);
+                renderCurrentPreview();
+            });
+        });
+
+        // Slider Kualitas Kompresi
+        qualitySlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            qualityPercentText.innerText = `${val}%`;
+
+            let label = `${val}%`;
+            if (val <= 40) label += ' (Sangat Hemat)';
+            else if (val <= 75) label += ' (Ringan)';
+            else if (val <= 85) label += ' (Optimal)';
+            else label += ' (Tinggi / HD)';
+
+            qualityValueDisplay.innerText = label;
+            photoBatch.forEach(item => item.processedBlob = null);
+            renderCurrentPreview();
+        });
+
+        // Dropdown Kompresi
+        maxDimensionSelect.addEventListener('change', () => {
+            photoBatch.forEach(item => item.processedBlob = null);
+            renderCurrentPreview();
+        });
+
+        targetFileSizeSelect.addEventListener('change', () => {
+            photoBatch.forEach(item => item.processedBlob = null);
+            renderCurrentPreview();
+        });
+
+        // Proses Semua Foto Secara Batch
+        async function processAllPhotos() {
+            if (photoBatch.length === 0) return;
+
+            processAllBtn.disabled = true;
+            processText.innerText = 'Memproses Semua Foto...';
+            progressContainer.classList.remove('hidden');
+
+            const sizePercent = parseInt(sizeSlider.value);
+            const qualityVal = parseInt(qualitySlider.value);
+            const maxDim = parseInt(maxDimensionSelect.value);
+            const targetMaxKB = parseInt(targetFileSizeSelect.value);
+
+            const offscreenCanvas = document.createElement('canvas');
+
+            for (let i = 0; i < photoBatch.length; i++) {
+                const item = photoBatch[i];
+                const eff = getEffectiveData(item);
+
+                progressText.innerText = `Memproses (${i + 1}/${photoBatch.length}): ${item.name}`;
+                const pct = Math.round(((i + 1) / photoBatch.length) * 100);
+                progressBar.style.width = `${pct}%`;
+                progressPercent.innerText = `${pct}%`;
+
+                drawTimestamp(offscreenCanvas, item.img, eff.timeStr, eff.dayStr, eff.dateStr, eff.loc1, eff.loc2, sizePercent, maxDim, currentPosition);
+                const compressedBlob = await compressCanvasToBlob(offscreenCanvas, qualityVal, targetMaxKB);
+                item.processedBlob = compressedBlob;
+                item.compressedSizeBytes = compressedBlob.size;
+            }
+
+            progressContainer.classList.add('hidden');
+            processAllBtn.disabled = false;
+            updateBatchUI();
+            renderCurrentPreview();
+        }
+
+        // Unduh Satu Foto Sebagai File .JPG (Bukan ZIP)
+        async function downloadSingle(idx) {
+            const item = photoBatch[idx];
+            if (!item) return;
+
+            if (!item.processedBlob) {
+                const tempCanvas = document.createElement('canvas');
+                const eff = getEffectiveData(item);
+                const sizePercent = parseInt(sizeSlider.value);
+                const qualityVal = parseInt(qualitySlider.value);
+                const maxDim = parseInt(maxDimensionSelect.value);
+                const targetMaxKB = parseInt(targetFileSizeSelect.value);
+
+                drawTimestamp(tempCanvas, item.img, eff.timeStr, eff.dayStr, eff.dateStr, eff.loc1, eff.loc2, sizePercent, maxDim, currentPosition);
+                const compressedBlob = await compressCanvasToBlob(tempCanvas, qualityVal, targetMaxKB);
+                item.processedBlob = compressedBlob;
+                item.compressedSizeBytes = compressedBlob.size;
+            }
+
+            // Simpan dengan nama asli murni tanpa embel-embel _timestamp
+            const fileName = getOriginalFileName(item.name);
+            saveAs(item.processedBlob, fileName);
+            updateBatchUI();
+        }
+
+        // Helper untuk mempertahankan nama file asli murni
+        function getOriginalFileName(originalName) {
+            if (!originalName) return `foto_${Date.now()}.jpg`;
+            if (/\.(jpe?g)$/i.test(originalName)) {
+                return originalName;
+            }
+            return originalName.replace(/\.[^/.]+$/, "") + ".jpg";
+        }
+
+        // Unduh Semua Foto Sekaligus Sebagai ZIP (Hanya Untuk > 1 Foto)
+        async function downloadAllAsZip() {
+            if (photoBatch.length === 0) return;
+
+            // Jika hanya 1 foto, panggil fungsi unduh tunggal .JPG
+            if (photoBatch.length === 1) {
+                await downloadSingle(0);
+                return;
+            }
+
+            const hasUnprocessed = photoBatch.some(p => p.processedBlob === null);
+            if (hasUnprocessed) {
+                await processAllPhotos();
+            }
+
+            mainDownloadBtn.disabled = true;
+            mainDownloadText.innerText = 'Mengompres ZIP...';
+            progressContainer.classList.remove('hidden');
+            progressText.innerText = 'Membuat arsip ZIP...';
+            progressBar.style.width = '50%';
+
+            const zip = new JSZip();
+            const nameTracker = {};
+            photoBatch.forEach((item) => {
+                let fileName = getOriginalFileName(item.name);
+                // Cegah duplikasi file jika ada foto dengan nama yang sama persis
+                if (nameTracker[fileName]) {
+                    nameTracker[fileName]++;
+                    const clean = fileName.replace(/\.[^/.]+$/, "");
+                    fileName = `${clean}_${nameTracker[fileName]}.jpg`;
+                } else {
+                    nameTracker[fileName] = 1;
+                }
+                zip.file(fileName, item.processedBlob);
+            });
+
+            const content = await zip.generateAsync({ type: 'blob' }, (metadata) => {
+                progressBar.style.width = `${Math.round(metadata.percent)}%`;
+                progressPercent.innerText = `${Math.round(metadata.percent)}%`;
+            });
+
+            progressContainer.classList.add('hidden');
+            mainDownloadBtn.disabled = false;
+
+            const timestamp = new Date().toISOString().slice(0, 10);
+            saveAs(content, `koleksi_foto_${timestamp}.zip`);
+            updateBatchUI();
+        }
+
+        // EVENT LISTENER UTAMA: Logika Unduh Pintar
+        mainDownloadBtn.addEventListener('click', async () => {
+            if (photoBatch.length === 0) return;
+
+            if (photoBatch.length === 1) {
+                // HANYA 1 FOTO: LANGSUNG UNDUH FILE .JPG TANPA ZIP!
+                await downloadSingle(0);
+            } else {
+                // LEBIH DARI 1 FOTO: UNDUH SEBAGAI ZIP
+                await downloadAllAsZip();
+            }
+        });
+
+        // Unduh Foto Aktif Saja (Tombol Sekunder)
+        downloadCurrentSingleBtn.addEventListener('click', async () => {
+            if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
+                await downloadSingle(selectedIndex);
+            }
+        });
+
+        processAllBtn.addEventListener('click', processAllPhotos);
+
+        clearAllBtn.addEventListener('click', () => {
+            photoBatch.forEach(p => {
+                if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
+            });
+            photoBatch = [];
+            selectedIndex = -1;
+            globalBatchOverride = { timeStr: '', dayStr: '', dateStr: '', loc1: '', loc2: '', isActive: false };
+            updateBatchUI();
+        });
+
+        // Event Input Upload File
+        uploadImages.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            uploadImages.value = '';
+        });
+
+        // Drag & Drop
+        ['dragenter', 'dragover'].forEach(name => {
+            dropZone.addEventListener(name, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('border-amber-400', 'bg-slate-900');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(name => {
+            dropZone.addEventListener(name, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('border-amber-400', 'bg-slate-900');
+            });
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        });
+    </script>
+</body>
+</html>
