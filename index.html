@@ -148,7 +148,8 @@
                         <div>
                             <label class="text-[11px] text-slate-400 block mb-1">Target Maks. File Size:</label>
                             <select id="targetFileSizeSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-400">
-                                <option value="0" selected>Bebas (Sesuai Kualitas)</option>
+                                <option value="-1" selected>Tanpa Kompresi (Ukuran & Kualitas Asli)</option>
+                                <option value="0">Bebas (Sesuai Kualitas)</option>
                                 <option value="200">Maksimal 200 KB</option>
                                 <option value="300">Maksimal 300 KB</option>
                                 <option value="500">Maksimal 500 KB (Standar Upload)</option>
@@ -1132,8 +1133,13 @@
             clearShadow();
         }
 
-        // Kompresi Canvas ke JPEG Blob
+        // Kompresi atau Ekspor Canvas ke JPEG Blob
         async function compressCanvasToBlob(targetCanvas, qualityPercent, targetMaxKB = 0) {
+            // Jika opsi "Tanpa Kompresi" dipilih (-1)
+            if (targetMaxKB === -1) {
+                return await new Promise(res => targetCanvas.toBlob(res, 'image/jpeg', 1.0));
+            }
+
             let q = Math.max(0.1, Math.min(1.0, qualityPercent / 100));
             let blob = await new Promise(res => targetCanvas.toBlob(res, 'image/jpeg', q));
 
