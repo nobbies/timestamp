@@ -1077,9 +1077,19 @@
 
             if (exifBinary) {
                 try {
+                    // Pastikan blok Image (0th) dan EXIF/GPS disesuaikan dengan dimensi canvas terbaru hasil resize/render
+                    if (!exifBinary["0th"]) exifBinary["0th"] = {};
+                    exifBinary["0th"][piexif.ImageIFD.XResolution] = [targetCanvas.width, 1];
+                    exifBinary["0th"][piexif.ImageIFD.YResolution] = [targetCanvas.height, 1];
+                    exifBinary["0th"][piexif.ImageIFD.ImageWidth] = targetCanvas.width;
+                    exifBinary["0th"][piexif.ImageIFD.ImageLength] = targetCanvas.height;
+                    exifBinary["0th"][piexif.ImageIFD.ResolutionUnit] = 2; // Inch
+
                     let exifBytes = piexif.dump(exifBinary);
                     dataUrl = piexif.insert(exifBytes, dataUrl);
-                } catch (e) {}
+                } catch (e) {
+                    // Abaikan jika gagal menyisipkan
+                }
             }
 
             let blob = await (async () => {
