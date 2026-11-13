@@ -64,9 +64,8 @@
                         <span class="text-xs text-slate-400 mt-1 text-center">Bisa 1 foto atau pilih banyak foto sekaligus</span>
                         <input type="file" id="uploadImages" accept="image/*, .jpg, .jpeg, .png, .webp, .heic" multiple class="hidden">
                     </label>
-                    <!-- Info Penting untuk Pengguna HP -->
                     <div class="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[11px] text-amber-300/90 leading-relaxed">
-                        📱 <strong>Tips Pengguna HP:</strong> Jika GPS tidak terdeteksi saat upload dari HP, pilih foto melalui menu <strong>"File / Pengelola File"</strong> (jangan lewat tab Galeri), karena fitur privasi Galeri HP sering otomatis menghapus lokasi foto.
+                        📱 <strong>Tips Pengguna HP:</strong> Jika GPS tidak terdeteksi otomatis, kolom lokasi akan dibiarkan kosong agar Anda dapat mengisinya secara manual dengan aman.
                     </div>
                 </div>
 
@@ -179,7 +178,7 @@
                             <span class="text-xs font-bold text-amber-400">✏️ 4. Aktifkan Edit Timestamp & Lokasi Manual</span>
                         </label>
                         <p id="toggleHint" class="text-[11px] text-slate-400 leading-relaxed">
-                            <span class="text-emerald-400 font-medium">Mode Otomatis Aktif:</span> Data jam, tanggal, dan lokasi murni dari EXIF asli masing-masing foto. Jika foto tidak memiliki GPS, lokasi otomatis kosong.
+                            <span class="text-emerald-400 font-medium">Mode Otomatis Aktif:</span> Data jam, tanggal, dan lokasi murni dari EXIF asli masing-masing foto.
                         </p>
                     </div>
 
@@ -306,7 +305,7 @@
         </div>
     </div>
 
-    <!-- Script Aplikasi Logika Batch, EXIF Pelestarian & Smart Download -->
+    <!-- Script Aplikasi -->
     <script>
         const uploadImages = document.getElementById('uploadImages');
         const dropZone = document.getElementById('dropZone');
@@ -398,27 +397,25 @@
 
         function convertDMSToDD(dms, ref) {
             if (!dms || dms.length < 3) return null;
-                function parseCoord(val) {
-                    if (typeof val === 'number') return val;
-                    if (val && typeof val === 'object') {
-                        if (val.numerator !== undefined && val.denominator !== undefined) {
-                            return val.denominator !== 0 ? val.numerator / val.denominator : 0;
-                        }
+            function parseCoord(val) {
+                if (typeof val === 'number') return val;
+                if (val && typeof val === 'object') {
+                    if (val.numerator !== undefined && val.denominator !== undefined) {
+                        return val.denominator !== 0 ? val.numerator / val.denominator : 0;
                     }
-                    const num = parseFloat(val);
-                    return isNaN(num) ? 0 : num;
                 }
+                const num = parseFloat(val);
+                return isNaN(num) ? 0 : num;
+            }
 
-                const deg = parseCoord(dms[0]);
-                const min = parseCoord(dms[1]);
-                const sec = parseCoord(dms[2]);
+            const deg = parseCoord(dms[0]);
+            const min = parseCoord(dms[1]);
+            const sec = parseCoord(dms[2]);
 
-                let dd = deg + (min / 60) + (sec / 3600);
-    
-                // Validasi arah mata angin (Ref: S untuk Lintang Selatan, W untuk Bujur Barat dijadikan negatif)
-                if (ref && (ref.toUpperCase() === 'S' || ref.toUpperCase() === 'W')) {
-                    dd = -dd;
-                }
+            let dd = deg + (min / 60) + (sec / 3600);
+            if (ref && (ref.toUpperCase() === 'S' || ref.toUpperCase() === 'W')) {
+                dd = -dd;
+            }
             return dd;
         }
 
@@ -440,7 +437,7 @@
             );
         }
 
-        // Ekstraksi EXIF & Menyimpan Buffer Asli untuk Piexifjs
+        // Ekstraksi EXIF & Validasi Ketat Koordinat GPS (Cegah Samudra Atlantik)
         function extractExifData(file) {
             return new Promise((resolve) => {
                 let finished = false;
@@ -471,20 +468,22 @@
                             const dateTimeOriginal = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime") || allTags.DateTimeOriginal || allTags.DateTime;
                             const dateObj = parseExifDate(dateTimeOriginal);
 
-                            let lat = EXIF.getTag(this, "GPSLatitude") || allTags.GPSLatitude;
+                            const lat = EXIF.getTag(this, "GPSLatitude") || allTags.GPSLatitude;
                             let latRef = EXIF.getTag(this, "GPSLatitudeRef") || allTags.GPSLatitudeRef;
-                            let lon = EXIF.getTag(this, "GPSLongitude") || allTags.GPSLongitude;
+                            const lon = EXIF.getTag(this, "GPSLongitude") || allTags.GPSLongitude;
                             let lonRef = EXIF.getTag(this, "GPSLongitudeRef") || allTags.GPSLongitudeRef;
 
                             let gps = null;
                             if (lat && lon) {
-                                // Otomatis set default 'S' (Selatan) dan 'E' (Timur) untuk wilayah Indonesia jika ref kosong
-                                if (!latRef) latRef = 'S'; 
+                                if (!latRef) latRef = 'S';
                                 if (!lonRef) lonRef = 'E';
-
                                 const latDD = convertDMSToDD(lat, latRef);
                                 const lonDD = convertDMSToDD(lon, lonRef);
-                                if (latDD !== null && lonDD !== null) {
+                                
+                                // VALIDASI KETAT: Pastikan masuk wilayah Indonesia (Lat: -11 s/d 6, Lon: 95 s/d 141)
+                                if (latDD !== null && lonDD !== null && 
+                                    !(Math.abs(latDD) < 0.0001 && Math.abs(lonDD) < 0.0001) &&
+                                    latDD >= -11 && latDD <= 6 && lonDD >= 95 && lonDD <= 141) {
                                     gps = { lat: latDD, lon: lonDD };
                                 }
                             }
@@ -674,7 +673,8 @@
                 const dateStr = `${dateObj.getDate()} ${MONTHS[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
 
                 const hasGps = !!exifResult.gps;
-                let initialLoc1 = hasGps ? `GPS: ${exifResult.gps.lat.toFixed(6)}, ${exifResult.gps.lon.toFixed(6)}` : '';
+                let initialLoc1 = ''; // Otomatis kosong jika GPS tidak valid / tidak ada
+                let initialLoc2 = '';
 
                 const photoItem = {
                     id: Date.now() + Math.random().toString(),
@@ -691,7 +691,7 @@
                     origDayStr: dayStr,
                     origDateStr: dateStr,
                     origLoc1: initialLoc1,
-                    origLoc2: '',
+                    origLoc2: initialLoc2,
                     hasGps: hasGps,
 
                     customEdit: null,
@@ -1070,29 +1070,23 @@
             clearShadow();
         }
 
-        // Fungsi Kompresi + Menyisipkan Kembali EXIF Mentah Menggunakan Piexifjs
         async function compressCanvasToBlob(targetCanvas, qualityPercent, targetMaxKB = 0, exifBinary = null) {
             let quality = (targetMaxKB === -1) ? 1.0 : Math.max(0.1, Math.min(1.0, qualityPercent / 100));
             
             let dataUrl = targetCanvas.toDataURL('image/jpeg', quality);
 
-            // Sisipkan kembali EXIF asli jika tersedia
             if (exifBinary) {
                 try {
                     let exifBytes = piexif.dump(exifBinary);
                     dataUrl = piexif.insert(exifBytes, dataUrl);
-                } catch (e) {
-                    // Jika gagal menyisipkan EXIF, abaikan dan gunakan dataUrl standar
-                }
+                } catch (e) {}
             }
 
-            // Ubah kembali dataURL ke Blob
             let blob = await (async () => {
                 const res = await fetch(dataUrl);
                 return await res.blob();
             })();
 
-            // Target ukuran file (jika diaktifkan selain -1 dan 0)
             if (targetMaxKB > 0 && targetMaxKB !== -1 && blob.size > targetMaxKB * 1024) {
                 let minQ = 0.12;
                 let maxQ = quality;
