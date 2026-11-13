@@ -39,7 +39,7 @@
                 </div>
                 <h1 class="text-2xl md:text-3xl font-extrabold text-white">📸 Batch Photo TimeStamp & Kompresor</h1>
                 <p class="text-xs md:text-sm text-slate-400 mt-1">
-                    Cap waktu EXIF otomatis, ukuran proporsional, kompresi fleksibel, pelestarian EXIF, dan unduh cerdas.
+                    Cap waktu EXIF otomatis, ukuran proporsional, kompresi fleksibel, pelestarian EXIF (Date Taken & GPS), dan unduh cerdas.
                 </p>
             </div>
             <div id="batchStats" class="hidden md:flex items-center gap-3 bg-slate-900/80 border border-slate-700 px-4 py-2.5 rounded-xl text-xs">
@@ -64,9 +64,14 @@
                         <span class="text-xs text-slate-400 mt-1 text-center">Bisa 1 foto atau pilih banyak foto sekaligus</span>
                         <input type="file" id="uploadImages" accept="image/*, .jpg, .jpeg, .png, .webp, .heic" multiple class="hidden">
                     </label>
+                    <label class="cursor-pointer flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs font-semibold transition">
+                        <span>📁</span> Pilih lewat File Manager (disarankan di Android, menjaga GPS)
+                        <input type="file" id="uploadImagesFile" multiple class="hidden">
+                    </label>
                     <div class="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[11px] text-amber-300/90 leading-relaxed">
-                        📱 <strong>Tips Pengguna HP:</strong> Jika GPS tidak terdeteksi otomatis, kolom lokasi akan dibiarkan kosong agar Anda dapat mengisinya secara manual dengan aman.
+                        📱 <strong>Tips Pengguna Android:</strong> Pemilih foto Galeri/Google Foto di browser sering <em>menghapus lokasi GPS</em> dari foto. Gunakan tombol <strong>File Manager</strong> di atas agar file asli (beserta GPS) terbaca. Jika GPS tetap kosong, isi koordinat di langkah 4.
                     </div>
+                    <div id="gpsNotice" class="hidden p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-[11px] text-red-300 leading-relaxed"></div>
                 </div>
 
                 <!-- 2. Pengaturan Ukuran & Posisi Timestamp -->
@@ -231,6 +236,18 @@
                             <label class="text-[11px] text-slate-400 block mb-1">Lokasi Baris 2 (Kota / Provinsi / Kode Pos):</label>
                             <input type="text" id="locationLine2" value="" placeholder="(Kosong jika tidak ada GPS EXIF)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400">
                         </div>
+
+                        <!-- Koordinat: solusi jika GPS foto hilang / salah -->
+                        <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/70 space-y-2">
+                            <label class="text-[11px] text-slate-300 font-semibold block">📍 Koordinat (jika GPS foto hilang / salah):</label>
+                            <input type="text" id="coordInput" value="" placeholder="-8.650000, 115.216667 (salin dari Google Maps)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400 font-mono">
+                            <div class="grid grid-cols-2 gap-2">
+                                <button type="button" id="searchCoordBtn" class="py-2 px-2 rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition">🔎 Isi Alamat dari Koordinat</button>
+                                <button type="button" id="useDeviceLocationBtn" class="py-2 px-2 rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition">📡 Pakai Lokasi HP Sekarang</button>
+                            </div>
+                            <p id="coordStatus" class="text-[10px] text-amber-300 leading-relaxed"></p>
+                            <p class="text-[10px] text-slate-500 leading-relaxed">Koordinat yang diisi di sini juga ditulis ke EXIF GPS foto hasil. "Lokasi HP Sekarang" hanya tepat jika Anda masih berada di lokasi pengambilan foto.</p>
+                        </div>
                     </div>
                 </div>
 
@@ -354,12 +371,19 @@
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
         const progressPercent = document.getElementById('progressPercent');
+        const coordInput = document.getElementById('coordInput');
+        const coordStatus = document.getElementById('coordStatus');
+        const searchCoordBtn = document.getElementById('searchCoordBtn');
+        const useDeviceLocationBtn = document.getElementById('useDeviceLocationBtn');
+        const gpsNotice = document.getElementById('gpsNotice');
+        const uploadImagesFile = document.getElementById('uploadImagesFile');
 
         let photoBatch = [];
         let selectedIndex = -1;
         const geocodeCache = new Map();
         let previewStatTimeout = null;
         let currentPosition = 'bottom-left';
+        let formGps = null; // koordinat yang dipilih lewat form manual {lat, lon}
 
         let globalBatchOverride = {
             timeStr: '',
@@ -419,6 +443,36 @@
             return dd;
         }
 
+        // Validasi koordinat seluruh dunia. 0,0 ditolak karena Android menulis 0,0 saat belum dapat GPS fix.
+        function isValidGps(lat, lon) {
+            return typeof lat === 'number' && typeof lon === 'number' &&
+                   isFinite(lat) && isFinite(lon) &&
+                   Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
+                   !(Math.abs(lat) < 0.0001 && Math.abs(lon) < 0.0001);
+        }
+
+        function gpsFromPiexif(exifObj) {
+            try {
+                const g = exifObj && exifObj["GPS"];
+                if (!g) return null;
+                const rat = (v) => Array.isArray(v) ? (v[1] ? v[0] / v[1] : NaN) : Number(v);
+                const toDD = (dms, ref, plus, minus) => {
+                    if (!Array.isArray(dms) || dms.length < 3) return null;
+                    const [d, m, sec] = dms.map(rat);
+                    if (![d, m, sec].every(isFinite)) return null;
+                    const r = String(ref || '').toUpperCase();
+                    if (r !== plus && r !== minus) return null;
+                    const dd = d + m / 60 + sec / 3600;
+                    return r === minus ? -dd : dd;
+                };
+                const lat = toDD(g[piexif.GPSIFD.GPSLatitude], g[piexif.GPSIFD.GPSLatitudeRef], 'N', 'S');
+                const lon = toDD(g[piexif.GPSIFD.GPSLongitude], g[piexif.GPSIFD.GPSLongitudeRef], 'E', 'W');
+                return isValidGps(lat, lon) ? { lat, lon } : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
         function parseExifDate(exifDateStr) {
             if (!exifDateStr) return null;
             const parts = exifDateStr.split(' ');
@@ -450,11 +504,11 @@
 
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    const arrayBuffer = e.target.result;
                     let exifBinary = null;
                     try {
-                        // Muat seluruh struktur EXIF mentah secara utuh menggunakan piexifjs
-                        exifBinary = piexif.load(arrayBuffer);
+                        // piexifjs hanya menerima data URL / binary string (BUKAN ArrayBuffer).
+                        // Hanya JPEG yang memiliki EXIF yang dapat dimuat; format lain akan melempar error.
+                        exifBinary = piexif.load(e.target.result);
                     } catch (err) {
                         exifBinary = null;
                     }
@@ -474,18 +528,13 @@
                             const lon = EXIF.getTag(this, "GPSLongitude") || allTags.GPSLongitude;
                             let lonRef = EXIF.getTag(this, "GPSLongitudeRef") || allTags.GPSLongitudeRef;
 
-                            let gps = null;
-                            if (lat && lon) {
-                                if (!latRef) latRef = 'S';
-                                if (!lonRef) lonRef = 'E';
+                            // 1) Baca GPS langsung dari EXIF mentah (piexif); 2) cadangan: exif-js.
+                            // Tanpa asumsi hemisfer: jika Ref (N/S/E/W) tidak ada, koordinat dianggap tidak valid.
+                            let gps = gpsFromPiexif(exifBinary);
+                            if (!gps && lat && lon && latRef && lonRef) {
                                 const latDD = convertDMSToDD(lat, latRef);
                                 const lonDD = convertDMSToDD(lon, lonRef);
-                                
-                                if (latDD !== null && lonDD !== null && 
-                                    !(Math.abs(latDD) < 0.0001 && Math.abs(lonDD) < 0.0001) &&
-                                    latDD >= -11 && latDD <= 6 && lonDD >= 95 && lonDD <= 141) {
-                                    gps = { lat: latDD, lon: lonDD };
-                                }
+                                if (isValidGps(latDD, lonDD)) gps = { lat: latDD, lon: lonDD };
                             }
 
                             resolve({ dateObj, gps, exifBinary });
@@ -498,7 +547,14 @@
                         }
                     }
                 };
-                reader.readAsArrayBuffer(file);
+                reader.onerror = function() {
+                    if (!finished) {
+                        finished = true;
+                        clearTimeout(timer);
+                        resolve({ dateObj: null, gps: null, exifBinary: null });
+                    }
+                };
+                reader.readAsDataURL(file);
             });
         }
 
@@ -531,64 +587,77 @@
             });
         }
 
-        async function fetchAddressFromCoords(lat, lon) {
+        async function fetchJson(url, ms = 8000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), ms);
+            try {
+                const res = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
+                return res.ok ? await res.json() : null;
+            } catch (e) {
+                return null;
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        function formatNominatimAddress(addr) {
+            const isID = (addr.country_code || '').toLowerCase() === 'id';
+            const local = addr.village || addr.hamlet || addr.neighbourhood || addr.quarter || addr.suburb || addr.road || '';
+            let district = addr.city_district || addr.district || '';
+            if (!district && addr.suburb && addr.suburb !== local) district = addr.suburb;
+            if (district === local) district = '';
+
+            let line1 = [local, district ? (isID ? `Kec. ${district}` : district) : ''].filter(Boolean).join(', ');
+            if (line1) line1 += ',';
+
+            const city = addr.city || addr.town || addr.municipality || addr.regency || addr.county || '';
+            const state = addr.state || addr.region || '';
+            const stateZip = [state, addr.postcode].filter(Boolean).join(' ');
+            const parts = [...new Set([city, stateZip].filter(Boolean))];
+            if (!isID && addr.country) parts.push(addr.country);
+            return { line1, line2: parts.join(', ') };
+        }
+
+        // Nominatim hanya mengizinkan ~1 permintaan/detik. Permintaan diantrekan agar tidak diblokir
+        // (penyebab umum alamat jadi kosong / hanya koordinat saat mengimpor banyak foto sekaligus).
+        let geocodeChain = Promise.resolve();
+        function fetchAddressFromCoords(lat, lon) {
             const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+            if (geocodeCache.has(key)) return Promise.resolve(geocodeCache.get(key));
+            const task = geocodeChain.then(() => geocodeOnce(lat, lon, key));
+            geocodeChain = task.catch(() => {}).then(() => new Promise(r => setTimeout(r, 1100)));
+            return task;
+        }
+
+        async function geocodeOnce(lat, lon, key) {
             if (geocodeCache.has(key)) return geocodeCache.get(key);
 
-            try {
-                const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-                const res = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    const addr = data.address || {};
-                    const part1 = addr.village || addr.suburb || addr.neighbourhood || addr.road || addr.quarter || addr.hamlet || '';
-                    const part2 = addr.county || addr.city_district || addr.district || '';
-                    let line1 = part1 && part2 ? `${part1}, Kec. ${part2},` : (part1 ? `${part1},` : (part2 ? `Kec. ${part2},` : ''));
-                    const city = addr.city || addr.regency || addr.municipality || addr.town || '';
-                    const state = addr.state || '';
-                    const postcode = addr.postcode || '';
-                    let line2 = city && state ? `${city}, ${state} ${postcode}`.trim() : (city ? `${city} ${postcode}`.trim() : `${state} ${postcode}`.trim());
-
-                    if (line1 || line2) {
-                        const result = { line1, line2 };
-                        geocodeCache.set(key, result);
-                        return result;
-                    }
+            const nom = await fetchJson(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=id`);
+            if (nom && nom.address) {
+                const result = formatNominatimAddress(nom.address);
+                if (result.line1 || result.line2) {
+                    geocodeCache.set(key, result);
+                    return result;
                 }
-            } catch (e) {}
+            }
 
-            try {
-                const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-                const res = await fetch(bdcUrl, { signal: controller.signal });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    const locality = data.locality || data.principalSubdivision || '';
-                    const city = data.city || '';
-                    const province = data.principalSubdivision || '';
-                    const postcode = data.postcode || '';
-                    let line1 = locality ? `${locality},` : '';
-                    let line2 = city ? `${city}, ${province} ${postcode}`.trim() : `${province} ${postcode}`.trim();
-
-                    if (line1 || line2) {
-                        const result = { line1, line2 };
-                        geocodeCache.set(key, result);
-                        return result;
-                    }
+            const data = await fetchJson(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`);
+            if (data) {
+                const locality = data.locality || '';
+                const city = data.city || '';
+                const province = data.principalSubdivision || '';
+                const stateZip = [province, data.postcode].filter(Boolean).join(' ');
+                const parts = [...new Set([city, stateZip].filter(Boolean))];
+                if (data.countryCode && data.countryCode !== 'ID' && data.countryName) parts.push(data.countryName);
+                const result = { line1: locality ? `${locality},` : '', line2: parts.join(', ') };
+                if (result.line1 || result.line2) {
+                    geocodeCache.set(key, result);
+                    return result;
                 }
-            } catch (e) {}
+            }
 
-            const result = { line1: `GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`, line2: '' };
-            geocodeCache.set(key, result);
-            return result;
+            // Gagal: jangan di-cache agar bisa dicoba lagi nanti
+            return { line1: `GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`, line2: '' };
         }
 
         function getEffectiveData(item) {
@@ -646,6 +715,8 @@
 
             progressContainer.classList.remove('hidden');
             const totalToLoad = files.length;
+            const failedNames = [];
+            const addedItems = [];
 
             for (let i = 0; i < totalToLoad; i++) {
                 const file = files[i];
@@ -659,7 +730,11 @@
                 const blobUrl = URL.createObjectURL(file);
                 const img = await loadImageAsync(blobUrl);
 
-                if (!img) continue;
+                if (!img) {
+                    URL.revokeObjectURL(blobUrl);
+                    failedNames.push(file.name);
+                    continue;
+                }
 
                 let dateObj = exifResult.dateObj;
                 if (!dateObj) {
@@ -686,6 +761,7 @@
                     originalSizeBytes: file.size,
                     compressedSizeBytes: null,
                     exifBinary: exifResult.exifBinary,
+                    hasExif: !!exifResult.exifBinary,
 
                     origTimeStr: timeStr,
                     origDayStr: dayStr,
@@ -699,6 +775,7 @@
                 };
 
                 photoBatch.push(photoItem);
+                addedItems.push(photoItem);
 
                 if (hasGps) {
                     fetchAddressFromCoords(exifResult.gps.lat, exifResult.gps.lon).then(addr => {
@@ -715,6 +792,8 @@
 
             progressContainer.classList.add('hidden');
             updateBatchUI();
+            updateGpsNotice(addedItems);
+            if (failedNames.length) alert('Foto berikut tidak dapat dibuka oleh browser (format tidak didukung?):\n' + failedNames.join('\n'));
 
             if (selectedIndex === -1 && photoBatch.length > 0) {
                 selectPhoto(0);
@@ -779,7 +858,7 @@
 
                 downloadCurrentSingleBtn.classList.remove('hidden');
                 const activeName = photoBatch[selectedIndex]?.name || 'Terpilih';
-                downloadCurrentSingleText.innerHTML = `Unduh Foto Ini Saja: <strong class="text-amber-400 truncate max-w-[170px] inline-block align-bottom">${activeName}</strong> (.JPG)`;
+                downloadCurrentSingleText.innerHTML = `Unduh Foto Ini Saja: <strong class="text-amber-400 truncate max-w-[170px] inline-block align-bottom">${escapeHtml(activeName)}</strong> (.JPG)`;
 
                 processAllBtn.disabled = false;
                 processAllBtn.className = "w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-medium py-2 px-3 rounded-lg cursor-pointer transition flex items-center justify-center gap-2 text-xs";
@@ -789,7 +868,29 @@
             renderBatchList();
         }
 
+        function updateGpsNotice(items) {
+            const noGps = items.filter(p => !p.hasGps);
+            if (noGps.length === 0) { gpsNotice.classList.add('hidden'); return; }
+            const noExif = noGps.filter(p => !p.hasExif).length;
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            let msg = `⚠️ <strong>${noGps.length} dari ${items.length} foto tidak membawa data GPS yang valid.</strong> `;
+            if (isAndroid) {
+                msg += 'Di Android, penyebab tersering: pemilih Galeri/Google Foto menghapus lokasi saat file dipilih lewat browser. Hapus foto dari antrean lalu unggah ulang lewat tombol <strong>📁 File Manager</strong>. ';
+            }
+            msg += 'Penyebab lain: izin lokasi kamera mati, GPS belum mendapat sinyal saat memotret' + (noExif ? ', atau foto sudah melalui WhatsApp/screenshot (metadata dihapus; ' + noExif + ' foto tidak punya EXIF sama sekali)' : '') + '. ';
+            msg += 'Solusi cepat: aktifkan <strong>Edit Manual</strong> lalu isi koordinat atau pakai <strong>Lokasi HP Sekarang</strong>.';
+            gpsNotice.innerHTML = msg;
+            gpsNotice.classList.remove('hidden');
+        }
+
+        function setFormGps(g) {
+            formGps = g || null;
+            coordInput.value = formGps ? `${formGps.lat.toFixed(6)}, ${formGps.lon.toFixed(6)}` : '';
+            coordStatus.textContent = '';
+        }
+
         function clearInputs() {
+            setFormGps(null);
             timeInput.value = '';
             dayInput.value = '';
             dateInput.value = '';
@@ -813,6 +914,7 @@
                 dateInput.value = globalBatchOverride.dateStr;
                 locationLine1.value = globalBatchOverride.loc1;
                 locationLine2.value = globalBatchOverride.loc2;
+                setFormGps(globalBatchOverride.gps);
                 resetCurrentPhotoBtn.classList.add('hidden');
             } else {
                 const eff = getEffectiveData(item);
@@ -821,6 +923,7 @@
                 dateInput.value = eff.dateStr;
                 locationLine1.value = eff.loc1;
                 locationLine2.value = eff.loc2;
+                setFormGps(item.customEdit && item.customEdit.gps);
 
                 if (item.customEdit && editTimestampToggle.checked) {
                     resetCurrentPhotoBtn.classList.remove('hidden');
@@ -868,13 +971,13 @@
                     sizeInfo = `<span class="text-slate-400 line-through text-[10px]">${formatBytes(item.originalSizeBytes)}</span> ➔ <strong class="text-emerald-400 font-mono text-[11px]">${formatBytes(item.compressedSizeBytes)}</strong>`;
                 }
 
-                const locDisplay = eff.loc1 ? `<p class="text-[10px] text-slate-400 truncate max-w-[200px]">📍 ${eff.loc1}</p>` : '';
+                const locDisplay = eff.loc1 ? `<p class="text-[10px] text-slate-400 truncate max-w-[200px]">📍 ${escapeHtml(eff.loc1)}</p>` : '';
 
                 div.innerHTML = `
                     <div class="flex items-center gap-2.5 overflow-hidden">
                         <img src="${item.blobUrl}" class="w-10 h-10 object-cover rounded border border-slate-700 flex-shrink-0">
                         <div class="overflow-hidden">
-                            <p class="font-medium text-slate-200 truncate max-w-[200px] text-xs">${item.name}</p>
+                            <p class="font-medium text-slate-200 truncate max-w-[200px] text-xs">${escapeHtml(item.name)}</p>
                             <p class="text-[11px] text-slate-400">
                                 🕒 ${eff.timeStr} • ${eff.dateStr} ${statusBadge}
                             </p>
@@ -1070,53 +1173,157 @@
             clearShadow();
         }
 
-        async function compressCanvasToBlob(targetCanvas, qualityPercent, targetMaxKB = 0, exifBinary = null) {
-            let quality = (targetMaxKB === -1) ? 1.0 : Math.max(0.1, Math.min(1.0, qualityPercent / 100));
-            
-            let dataUrl = targetCanvas.toDataURL('image/jpeg', quality);
+        function escapeHtml(str) {
+            return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
 
-            // Sisipkan kembali seluruh blok EXIF mentah asli secara utuh
-            if (exifBinary) {
+        function dataUrlToBlob(dataUrl) {
+            const comma = dataUrl.indexOf(',');
+            const mime = dataUrl.slice(5, dataUrl.indexOf(';'));
+            const bin = atob(dataUrl.slice(comma + 1));
+            const arr = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            return new Blob([arr], { type: mime });
+        }
+
+        // Menyiapkan EXIF asli agar valid untuk gambar hasil render canvas.
+        // Data asli (kamera, tanggal, GPS, eksposur, dll.) dipertahankan; yang disesuaikan hanya:
+        //  - Orientation => 1 (piksel canvas sudah diputar oleh browser; jika tidak, foto akan terputar 2x)
+        //  - PixelXDimension/PixelYDimension => ukuran baru hasil resize
+        //  - Thumbnail lama dibuang (isinya foto asli tanpa timestamp & ukurannya sudah tidak cocok)
+        function formatExifDate(d) {
+            const p = (n, l = 2) => String(n).padStart(l, '0');
+            return `${p(d.getFullYear(), 4)}:${p(d.getMonth() + 1)}:${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+        }
+
+        function degToDmsRational(value) {
+            const abs = Math.abs(value);
+            const d = Math.floor(abs);
+            const mFloat = (abs - d) * 60;
+            const m = Math.floor(mFloat);
+            const sec = Math.round((mFloat - m) * 60 * 10000);
+            return [[d, 1], [m, 1], [sec, 10000]];
+        }
+
+        // Ubah teks manual (jam "HH:mm" + tanggal "29 Oktober 2026") menjadi Date. null jika tidak valid.
+        function parseManualDate(dateStr, timeStr, item) {
+            const dm = /(\d{1,2})\s+([^\s\d]+)\s+(\d{4})/.exec(dateStr || '');
+            const tm = /(\d{1,2})[:.](\d{2})/.exec(timeStr || '');
+            if (!dm || !tm) return null;
+            const monthIdx = MONTHS.findIndex(m => m.toLowerCase() === dm[2].toLowerCase());
+            if (monthIdx < 0) return null;
+            const day = +dm[1], year = +dm[3], hh = +tm[1], mm = +tm[2];
+            const unchanged = item && dateStr === item.origDateStr && timeStr === item.origTimeStr;
+            const sec = unchanged && item.dateObj ? item.dateObj.getSeconds() : 0;
+            const d = new Date(year, monthIdx, day, hh, mm, sec);
+            if (d.getFullYear() !== year || d.getMonth() !== monthIdx || d.getDate() !== day || hh > 23 || mm > 59) return null;
+            return d;
+        }
+
+        // Saat mode manual aktif: Date Taken (dan GPS jika koordinat diisi) ikut ditulis ke EXIF.
+        function getExifOverrides(item) {
+            const o = { dateTaken: null, gps: null };
+            if (!item || !editTimestampToggle.checked) return o;
+            const scope = document.querySelector('input[name="applyScope"]:checked')?.value || 'current';
+            let src = null;
+            if (scope === 'all' && globalBatchOverride.isActive) src = globalBatchOverride;
+            else if (scope !== 'all' && item.customEdit) src = item.customEdit;
+            if (!src) return o;
+            const eff = getEffectiveData(item);
+            o.dateTaken = parseManualDate(eff.dateStr, eff.timeStr, item);
+            o.gps = src.gps || null;
+            return o;
+        }
+
+        function buildExifBytes(exifObj, width, height, overrides = {}) {
+            const ex = exifObj
+                ? JSON.parse(JSON.stringify(exifObj)) // salinan; objek asli tidak diubah
+                : { "0th": {}, "Exif": {}, "GPS": {}, "Interop": {} }; // foto tanpa EXIF (mis. PNG): buat baru
+            ex["0th"] = ex["0th"] || {};
+            ex["Exif"] = ex["Exif"] || {};
+
+            ex["0th"][piexif.ImageIFD.Orientation] = 1;
+            delete ex["0th"][piexif.ImageIFD.ImageWidth];
+            delete ex["0th"][piexif.ImageIFD.ImageLength];
+            ex["Exif"][piexif.ExifIFD.PixelXDimension] = width;
+            ex["Exif"][piexif.ExifIFD.PixelYDimension] = height;
+
+            // Date Taken manual
+            if (overrides.dateTaken instanceof Date && !isNaN(overrides.dateTaken)) {
+                const t = formatExifDate(overrides.dateTaken);
+                ex["Exif"][piexif.ExifIFD.DateTimeOriginal] = t;
+                ex["Exif"][piexif.ExifIFD.DateTimeDigitized] = t;
+                ex["0th"][piexif.ImageIFD.DateTime] = t;
+                delete ex["Exif"][piexif.ExifIFD.SubSecTime];
+                delete ex["Exif"][piexif.ExifIFD.SubSecTimeOriginal];
+                delete ex["Exif"][piexif.ExifIFD.SubSecTimeDigitized];
+            }
+
+            // GPS manual (koordinat dari form)
+            if (overrides.gps && isValidGps(overrides.gps.lat, overrides.gps.lon)) {
+                const g = ex["GPS"] = ex["GPS"] || {};
+                g[piexif.GPSIFD.GPSVersionID] = [2, 3, 0, 0];
+                g[piexif.GPSIFD.GPSLatitudeRef] = overrides.gps.lat < 0 ? 'S' : 'N';
+                g[piexif.GPSIFD.GPSLatitude] = degToDmsRational(overrides.gps.lat);
+                g[piexif.GPSIFD.GPSLongitudeRef] = overrides.gps.lon < 0 ? 'W' : 'E';
+                g[piexif.GPSIFD.GPSLongitude] = degToDmsRational(overrides.gps.lon);
+                delete g[piexif.GPSIFD.GPSAltitude]; // ketinggian lama tidak relevan lagi
+                delete g[piexif.GPSIFD.GPSAltitudeRef];
+            }
+
+            delete ex["1st"];
+            delete ex["thumbnail"];
+
+            try {
+                return piexif.dump(ex);
+            } catch (e) {
+                // Blok EXIF maksimal 64 KB; jika terlalu besar, buang MakerNote (data vendor) lalu coba lagi.
+                delete ex["Exif"][piexif.ExifIFD.MakerNote];
+                return piexif.dump(ex);
+            }
+        }
+
+        function encodeJpeg(targetCanvas, quality, exifBytes) {
+            let dataUrl = targetCanvas.toDataURL('image/jpeg', quality);
+            if (exifBytes) {
                 try {
-                    // Perbarui dimensi gambar pada data EXIF agar sesuai dengan hasil render canvas
-                    if (exifBinary["0th"]) {
-                        exifBinary["0th"][piexif.ImageIFD.XResolution] = [targetCanvas.width, 1];
-                        exifBinary["0th"][piexif.ImageIFD.YResolution] = [targetCanvas.height, 1];
-                        exifBinary["0th"][piexif.ImageIFD.ImageWidth] = targetCanvas.width;
-                        exifBinary["0th"][piexif.ImageIFD.ImageLength] = targetCanvas.height;
-                    }
-                    let exifBytes = piexif.dump(exifBinary);
                     dataUrl = piexif.insert(exifBytes, dataUrl);
                 } catch (e) {
                     console.error("Gagal menyisipkan EXIF:", e);
                 }
             }
+            return dataUrlToBlob(dataUrl);
+        }
 
-            let blob = await (async () => {
-                const res = await fetch(dataUrl);
-                return await res.blob();
-            })();
+        async function compressCanvasToBlob(targetCanvas, qualityPercent, targetMaxKB = 0, exifBinary = null, overrides = {}) {
+            const quality = (targetMaxKB === -1) ? 1.0 : Math.max(0.1, Math.min(1.0, qualityPercent / 100));
 
-            if (targetMaxKB > 0 && targetMaxKB !== -1 && blob.size > targetMaxKB * 1024) {
-                let minQ = 0.12;
-                let maxQ = quality;
-                for (let iter = 0; iter < 4; iter++) {
-                    let midQ = (minQ + maxQ) / 2;
-                    let testDataUrl = targetCanvas.toDataURL('image/jpeg', midQ);
-                    if (exifBinary) {
-                        try {
-                            testDataUrl = piexif.insert(piexif.dump(exifBinary), testDataUrl);
-                        } catch (e) {}
-                    }
-                    let testBlob = await (await fetch(testDataUrl)).blob();
-                    if (testBlob.size <= targetMaxKB * 1024) {
-                        blob = testBlob;
-                        minQ = midQ;
+            let exifBytes = null;
+            if (exifBinary || overrides.dateTaken || overrides.gps) {
+                try {
+                    exifBytes = buildExifBytes(exifBinary, targetCanvas.width, targetCanvas.height, overrides);
+                } catch (e) {
+                    console.error("Gagal menyiapkan EXIF:", e);
+                }
+            }
+
+            let blob = encodeJpeg(targetCanvas, quality, exifBytes);
+
+            // Batas ukuran file (KB): pencarian biner kualitas, selalu memilih hasil terbaik yang memenuhi batas
+            if (targetMaxKB > 0 && blob.size > targetMaxKB * 1024) {
+                const limit = targetMaxKB * 1024;
+                let lo = 0.1, hi = quality, best = null;
+                for (let iter = 0; iter < 6; iter++) {
+                    const mid = (lo + hi) / 2;
+                    const testBlob = encodeJpeg(targetCanvas, mid, exifBytes);
+                    if (testBlob.size <= limit) {
+                        best = testBlob;
+                        lo = mid;
                     } else {
-                        maxQ = midQ;
-                        blob = testBlob;
+                        hi = mid;
                     }
                 }
+                blob = best || encodeJpeg(targetCanvas, 0.1, exifBytes); // tidak ada yang muat: pakai yang terkecil
             }
             return blob;
         }
@@ -1137,7 +1344,7 @@
             previewStatTimeout = setTimeout(async () => {
                 const qualityVal = parseInt(qualitySlider.value);
                 const targetMaxKB = parseInt(targetFileSizeSelect.value);
-                const blob = await compressCanvasToBlob(canvas, qualityVal, targetMaxKB, item.exifBinary);
+                const blob = await compressCanvasToBlob(canvas, qualityVal, targetMaxKB, item.exifBinary, getExifOverrides(item));
 
                 item.processedBlob = blob;
                 item.compressedSizeBytes = blob.size;
@@ -1165,6 +1372,7 @@
                     dateStr: dateInput.value,
                     loc1: locationLine1.value,
                     loc2: locationLine2.value,
+                        gps: formGps,
                     isActive: true
                 };
                 photoBatch.forEach(item => item.processedBlob = null);
@@ -1176,7 +1384,8 @@
                         dayStr: dayInput.value,
                         dateStr: dateInput.value,
                         loc1: locationLine1.value,
-                        loc2: locationLine2.value
+                        loc2: locationLine2.value,
+                        gps: formGps
                     };
                     item.processedBlob = null;
                     resetCurrentPhotoBtn.classList.remove('hidden');
@@ -1208,6 +1417,7 @@
                         dateStr: dateInput.value,
                         loc1: locationLine1.value,
                         loc2: locationLine2.value,
+                        gps: formGps,
                         isActive: true
                     };
                     resetCurrentPhotoBtn.classList.add('hidden');
@@ -1215,6 +1425,7 @@
                     globalBatchOverride.isActive = false;
                     syncInputsWithSelected();
                 }
+                photoBatch.forEach(item => item.processedBlob = null);
                 renderBatchList();
                 renderCurrentPreview();
             });
@@ -1231,6 +1442,7 @@
                 globalBatchOverride.isActive = false;
                 syncInputsWithSelected();
             }
+            photoBatch.forEach(item => item.processedBlob = null);
             renderBatchList();
             renderCurrentPreview();
         });
@@ -1242,6 +1454,7 @@
         sizeSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             sizeValueDisplay.innerText = `${val}%`;
+            photoBatch.forEach(item => item.processedBlob = null);
             renderCurrentPreview();
         });
 
@@ -1305,7 +1518,7 @@
                 progressPercent.innerText = `${pct}%`;
 
                 drawTimestamp(offscreenCanvas, item.img, eff.timeStr, eff.dayStr, eff.dateStr, eff.loc1, eff.loc2, sizePercent, maxDim, currentPosition);
-                const compressedBlob = await compressCanvasToBlob(offscreenCanvas, qualityVal, targetMaxKB, item.exifBinary);
+                const compressedBlob = await compressCanvasToBlob(offscreenCanvas, qualityVal, targetMaxKB, item.exifBinary, getExifOverrides(item));
                 item.processedBlob = compressedBlob;
                 item.compressedSizeBytes = compressedBlob.size;
             }
@@ -1329,7 +1542,7 @@
                 const targetMaxKB = parseInt(targetFileSizeSelect.value);
 
                 drawTimestamp(tempCanvas, item.img, eff.timeStr, eff.dayStr, eff.dateStr, eff.loc1, eff.loc2, sizePercent, maxDim, currentPosition);
-                const compressedBlob = await compressCanvasToBlob(tempCanvas, qualityVal, targetMaxKB, item.exifBinary);
+                const compressedBlob = await compressCanvasToBlob(tempCanvas, qualityVal, targetMaxKB, item.exifBinary, getExifOverrides(item));
                 item.processedBlob = compressedBlob;
                 item.compressedSizeBytes = compressedBlob.size;
             }
@@ -1399,6 +1612,70 @@
             if (selectedIndex >= 0 && photoBatch[selectedIndex]) {
                 await downloadSingle(selectedIndex);
             }
+        });
+
+        function parseCoordinates(text) {
+            const m = /(-?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)/.exec(String(text || '').replace(/[°]/g, ''));
+            if (!m) return null;
+            const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+            return isValidGps(lat, lon) ? { lat, lon } : null;
+        }
+
+        async function applyCoordinates(lat, lon, note = '') {
+            formGps = { lat, lon };
+            coordInput.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            coordStatus.textContent = 'Mencari alamat...';
+            const addr = await fetchAddressFromCoords(lat, lon);
+            locationLine1.value = addr.line1;
+            locationLine2.value = addr.line2;
+            const found = !addr.line1.startsWith('GPS:');
+            coordStatus.textContent = (found ? 'Alamat terisi dari koordinat. ' : 'Alamat tidak ditemukan (periksa koneksi); koordinat tetap dipakai, lokasi bisa diisi manual. ') + note;
+            handleManualInputUpdate();
+        }
+
+        searchCoordBtn.addEventListener('click', () => {
+            const c = parseCoordinates(coordInput.value);
+            if (!c) {
+                coordStatus.textContent = 'Format koordinat tidak valid. Contoh: -8.650000, 115.216667 (lintang, bujur).';
+                return;
+            }
+            applyCoordinates(c.lat, c.lon);
+        });
+
+        coordInput.addEventListener('input', () => {
+            if (coordInput.value.trim() === '' && formGps) {
+                formGps = null;
+                handleManualInputUpdate();
+            }
+        });
+
+        useDeviceLocationBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                coordStatus.textContent = 'Browser ini tidak mendukung geolokasi.';
+                return;
+            }
+            coordStatus.textContent = 'Mengambil lokasi HP... (aktifkan GPS & izinkan akses lokasi)';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const { latitude, longitude, accuracy } = pos.coords;
+                    const note = `Akurasi sekitar ±${Math.round(accuracy)} m.` + (accuracy > 100 ? ' Akurasi rendah: pindah ke area terbuka lalu coba lagi.' : '');
+                    applyCoordinates(latitude, longitude, note);
+                },
+                (err) => {
+                    const msgs = {
+                        1: 'Izin lokasi ditolak. Izinkan akses lokasi untuk situs ini di pengaturan browser.',
+                        2: 'Lokasi tidak tersedia. Aktifkan GPS/Lokasi di HP.',
+                        3: 'Waktu habis saat mencari sinyal GPS. Coba di area terbuka.'
+                    };
+                    coordStatus.textContent = (msgs[err.code] || 'Gagal mengambil lokasi.') + (location.protocol === 'file:' ? ' (Geolokasi sering diblokir jika file dibuka langsung dari penyimpanan; buka lewat https atau localhost.)' : '');
+                },
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+            );
+        });
+
+        uploadImagesFile.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            uploadImagesFile.value = '';
         });
 
         processAllBtn.addEventListener('click', processAllPhotos);
