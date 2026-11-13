@@ -453,6 +453,7 @@
                     const arrayBuffer = e.target.result;
                     let exifBinary = null;
                     try {
+                        // Muat seluruh struktur EXIF mentah secara utuh menggunakan piexifjs
                         exifBinary = piexif.load(arrayBuffer);
                     } catch (err) {
                         exifBinary = null;
@@ -480,7 +481,6 @@
                                 const latDD = convertDMSToDD(lat, latRef);
                                 const lonDD = convertDMSToDD(lon, lonRef);
                                 
-                                // VALIDASI KETAT: Pastikan masuk wilayah Indonesia (Lat: -11 s/d 6, Lon: 95 s/d 141)
                                 if (latDD !== null && lonDD !== null && 
                                     !(Math.abs(latDD) < 0.0001 && Math.abs(lonDD) < 0.0001) &&
                                     latDD >= -11 && latDD <= 6 && lonDD >= 95 && lonDD <= 141) {
@@ -1075,20 +1075,20 @@
             
             let dataUrl = targetCanvas.toDataURL('image/jpeg', quality);
 
+            // Sisipkan kembali seluruh blok EXIF mentah asli secara utuh
             if (exifBinary) {
                 try {
-                    // Pastikan blok Image (0th) dan EXIF/GPS disesuaikan dengan dimensi canvas terbaru hasil resize/render
-                    if (!exifBinary["0th"]) exifBinary["0th"] = {};
-                    exifBinary["0th"][piexif.ImageIFD.XResolution] = [targetCanvas.width, 1];
-                    exifBinary["0th"][piexif.ImageIFD.YResolution] = [targetCanvas.height, 1];
-                    exifBinary["0th"][piexif.ImageIFD.ImageWidth] = targetCanvas.width;
-                    exifBinary["0th"][piexif.ImageIFD.ImageLength] = targetCanvas.height;
-                    exifBinary["0th"][piexif.ImageIFD.ResolutionUnit] = 2; // Inch
-
+                    // Perbarui dimensi gambar pada data EXIF agar sesuai dengan hasil render canvas
+                    if (exifBinary["0th"]) {
+                        exifBinary["0th"][piexif.ImageIFD.XResolution] = [targetCanvas.width, 1];
+                        exifBinary["0th"][piexif.ImageIFD.YResolution] = [targetCanvas.height, 1];
+                        exifBinary["0th"][piexif.ImageIFD.ImageWidth] = targetCanvas.width;
+                        exifBinary["0th"][piexif.ImageIFD.ImageLength] = targetCanvas.height;
+                    }
                     let exifBytes = piexif.dump(exifBinary);
                     dataUrl = piexif.insert(exifBytes, dataUrl);
                 } catch (e) {
-                    // Abaikan jika gagal menyisipkan
+                    console.error("Gagal menyisipkan EXIF:", e);
                 }
             }
 
